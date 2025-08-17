@@ -1,135 +1,167 @@
 package com.example.filemanagerredirect
 
+import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import java.io.File
+import androidx.appcompat.widget.SwitchCompat
 
-private const val PREFS = "fmredirect_prefs"
+private const val PREFS = "fm_redirect_prefs"
 private const val KEY_ENABLED = "enabled"
-private const val KEY_FALLBACK_TO_SYSTEM = "fallback"
-private const val KEY_AUTO_FALLBACK = "auto_fallback"
-private const val KEY_PREFERRED = "preferred_pkg"
-private const val KEY_FALLBACK_LIST = "fallback_list"
-private const val KEY_DEBUG_TOASTS = "debug_toasts"
-
-data class AppEntry(val label: String, val packageName: String, val icon: Drawable)
-class AppEntryAdapter(ctx: android.content.Context, private val items: List<AppEntry>)
-    : ArrayAdapter<AppEntry>(ctx, android.R.layout.simple_list_item_single_choice, items) {
-    override fun getCount() = items.size
-    override fun getItem(position: Int) = items[position]
-    override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-        val row = convertView ?: View.inflate(context, android.R.layout.simple_list_item_single_choice, null)
-        val text = row.findViewById<TextView>(android.R.id.text1)
-        val e = items[position]
-        text.text = "${e.label}  (${e.packageName})"
-        e.icon.setBounds(0, 0, text.lineHeight * 3 / 2, text.lineHeight * 3 / 2)
-        text.setCompoundDrawables(e.icon, null, null, null)
-        text.compoundDrawablePadding = (text.lineHeight * 0.4f).toInt()
-        return row
-    }
-}
+private const val KEY_STEALTH = "stealth_mode"
+private const val KEY_SELECTED = "selected_fm_pkg"
+private const val KEY_FALLBACK_SAF = "fallback_saf"
 
 class SettingsActivity : AppCompatActivity() {
+
+    data class FM(val label: String, val packageName: String) {
+        override fun toString(): String = "$label  ($packageName)"
+    }
+
+    // keep in sync with the hook’s list
+    private val knownFms = listOf(
+        "com.mixplorer", "com.mixplorer.silver",
+        "pl.solidexplorer2",
+        "com.lonelycatgames.Xplore",
+        "com.speedsoftware.rootexplorer",
+        "com.amaze.filemanager",
+        "com.cxinventor.file.explorer",           // CX
+        "nextapp.fx", "com.nextapp.fx",          // FX variants seen
+        "me.zhanghai.android.files",
+        "com.ghisler.android.TotalCommander",
+        "com.oneplus.filemanager",
+        "com.google.android.apps.nbu.files",
+        "bin.mt.plus", "bin.mt.plus.canary",
+        "ru.zdevs.zarchiver",
+        "com.soft.explorer",
+        "org.kman.AmazeFileUtilities"
+    )
+
+    private lateinit var switchEnable: SwitchCompat
+    private lateinit var switchStealth: SwitchCompat
+    private lateinit var switchSaf: SwitchCompat
+    private lateinit var listView: ListView
+    private lateinit var btnSave: View
+    private lateinit var btnTest: View
+
+    private val items = mutableListOf<FM>()
+    private lateinit var adapter: ArrayAdapter<FM>
+
+    private fun Context.safePrefs() = try {
+        createDeviceProtectedStorageContext().getSharedPreferences(PREFS, MODE_PRIVATE)
+    } catch (_: Throwable) {
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Make sure your app theme in Manifest is an AppCompat descendant (already handled elsewhere)
+        setContentView(R.layout.activity_settings)
 
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32,32,32,32) }
-        val enable = Switch(this).apply { text = getString(R.string.toggle_enable) }
-        val fallbackToSystem = CheckBox(this).apply { text = getString(R.string.toggle_fallback) }
-        val autoFallback = CheckBox(this).apply { text = "Auto fallback to another manager" }
-        val debugToasts = CheckBox(this).apply { text = getString(R.string.toggle_debug) }
-        val header = TextView(this).apply { text = getString(R.string.select_manager) }
-        val list = ListView(this).apply { choiceMode = ListView.CHOICE_MODE_SINGLE }
-        val save = Button(this).apply { text = getString(R.string.save) }
-        val openTest = Button(this).apply { text = getString(R.string.test_screen) }
+        // bind views (IDs must exist in activity_settings.xml)
+        switchEnable = findViewById(R.id.switch_enable)
+        switchStealth = findViewById(R.id.switch_stealth)
+        switchSaf = findViewById(R.id.switch_saf)
+        listView = findViewById(R.id.list_view)
+        btnSave = findViewById(R.id.btn_save)
+        btnTest = findViewById(R.id.btn_test)
 
-        layout.addView(enable)
-        layout.addView(fallbackToSystem)
-        layout.addView(autoFallback)
-        layout.addView(debugToasts)
-        layout.addView(header)
-        layout.addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        layout.addView(save)
-        layout.addView(openTest)
-        setContentView(layout)
+        val sp = safePrefs()
 
-        // Read from Device-Protected storage first
-        val de = createDeviceProtectedStorageContext()
-        val sp = try { de.getSharedPreferences(PREFS, MODE_PRIVATE) } catch (_: Throwable) { getSharedPreferences(PREFS, MODE_PRIVATE) }
+        // load switches
+        switchEnable.isChecked = sp.getBoolean(KEY_ENABLED, false)
+        switchStealth.isChecked = sp.getBoolean(KEY_STEALTH, true)
+        switchSaf.isChecked = sp.getBoolean(KEY_FALLBACK_SAF, true)
 
-        enable.isChecked = sp.getBoolean(KEY_ENABLED, true)
-        fallbackToSystem.isChecked = sp.getBoolean(KEY_FALLBACK_TO_SYSTEM, true)
-        autoFallback.isChecked = sp.getBoolean(KEY_AUTO_FALLBACK, true)
-        debugToasts.isChecked = sp.getBoolean(KEY_DEBUG_TOASTS, true)
-
-        val knownPkgs = resources.getStringArray(R.array.known_file_manager_packages).toMutableSet()
-        val pm = packageManager
-        fun discover(action: String) {
-            val probe = Intent(action).addCategory(Intent.CATEGORY_DEFAULT).setType("*/*")
-            pm.queryIntentActivities(probe, PackageManager.MATCH_DEFAULT_ONLY)
-                .map { it.activityInfo.packageName }
-                .forEach { knownPkgs.add(it) }
+        // persist switches immediately
+        switchEnable.setOnCheckedChangeListener { _, v ->
+            sp.edit().putBoolean(KEY_ENABLED, v).apply()
         }
-        discover(Intent.ACTION_GET_CONTENT)
-        discover(Intent.ACTION_OPEN_DOCUMENT)
-        discover(Intent.ACTION_OPEN_DOCUMENT_TREE)
-        discover(Intent.ACTION_PICK)
-
-        val installed = pm.getInstalledPackages(0).associateBy { it.packageName }
-        val entries = knownPkgs.mapNotNull { pkg ->
-            val pi = installed[pkg] ?: return@mapNotNull null
-            val ai: ApplicationInfo = pi.applicationInfo ?: return@mapNotNull null
-            val label = pm.getApplicationLabel(ai).toString()
-            val icon = try { ai.loadIcon(pm) } catch (_: Throwable) { pm.defaultActivityIcon }
-            AppEntry(label, pkg, icon)
-        }.distinctBy { it.packageName }
-         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
-
-        val adapter = AppEntryAdapter(this, entries)
-        list.adapter = adapter
-
-        sp.getString(KEY_PREFERRED, null)?.let { saved ->
-            val idx = entries.indexOfFirst { it.packageName == saved }
-            if (idx >= 0) list.setItemChecked(idx, true)
+        switchStealth.setOnCheckedChangeListener { _, v ->
+            sp.edit().putBoolean(KEY_STEALTH, v).apply()
+        }
+        switchSaf.setOnCheckedChangeListener { _, v ->
+            sp.edit().putBoolean(KEY_FALLBACK_SAF, v).apply()
         }
 
-        save.setOnClickListener {
-            val chosen = entries.getOrNull(list.checkedItemPosition)?.packageName
-            val fallbackList = buildList {
-                if (chosen != null) add(chosen)
-                entries.map { it.packageName }.filter { it != chosen }.forEach { add(it) }
-            }.joinToString(",")
+        // build FM list (installed known + anything that claims to handle picker intents)
+        items.clear()
+        items.addAll(discoverFileManagers())
 
+        adapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, items)
+        listView.adapter = adapter
+        listView.choiceMode = ListView.CHOICE_MODE_SINGLE  // <- correct constant
+
+        // preselect from prefs
+        val selectedPkg = sp.getString(KEY_SELECTED, "") ?: ""
+        if (selectedPkg.isNotBlank()) {
+            val idx = items.indexOfFirst { it.packageName == selectedPkg }
+            if (idx >= 0) listView.setItemChecked(idx, true)
+        }
+
+        // tap-to-select saves instantly
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val pkg = items.getOrNull(position)?.packageName ?: ""
+            sp.edit().putString(KEY_SELECTED, pkg).apply()
+        }
+
+        // SAVE is just a friendly confirmation (everything already persisted)
+        btnSave.setOnClickListener {
+            Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+        }
+
+        // Quick test: launches the platform picker flow your hook should redirect
+        btnTest.setOnClickListener {
+            val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }
             try {
-                val deCtx = createDeviceProtectedStorageContext()
-                val deSp = deCtx.getSharedPreferences(PREFS, MODE_PRIVATE)
-                val ok = deSp.edit()
-                    .putBoolean(KEY_ENABLED, enable.isChecked)
-                    .putBoolean(KEY_FALLBACK_TO_SYSTEM, fallbackToSystem.isChecked)
-                    .putBoolean(KEY_AUTO_FALLBACK, autoFallback.isChecked)
-                    .putBoolean(KEY_DEBUG_TOASTS, debugToasts.isChecked)
-                    .putString(KEY_PREFERRED, chosen)
-                    .putString(KEY_FALLBACK_LIST, fallbackList)
-                    .commit()
-
-                val prefsFile = File(deCtx.applicationInfo.dataDir, "shared_prefs/$PREFS.xml")
-                prefsFile.setReadable(true, false)
-
-                Toast.makeText(this, if (ok) "Saved" else "Failed to save", Toast.LENGTH_SHORT).show()
-            } catch (t: Throwable) {
-                Toast.makeText(this, "Save failed: ${t.message}", Toast.LENGTH_LONG).show()
+                startActivity(i)
+            } catch (e: Exception) {
+                Toast.makeText(this, "No activity found: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
+    }
 
-        openTest.setOnClickListener {
-            startActivity(Intent(this, TestActivity::class.java))
+    private fun discoverFileManagers(): List<FM> {
+        val pm = packageManager
+        val out = LinkedHashMap<String, String>()  // pkg -> label
+
+        fun addIfInstalled(pkg: String) {
+            try {
+                val info = pm.getPackageInfo(pkg, 0)
+                val label = pm.getApplicationLabel(info.applicationInfo)?.toString() ?: pkg
+                out[pkg] = label
+            } catch (_: PackageManager.NameNotFoundException) { /* not installed */ }
         }
+
+        // 1) add installed from known list
+        knownFms.forEach { addIfInstalled(it) }
+
+        // 2) add anything that resolves file picker/viewer intents
+        val probes = listOf(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),
+            Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"),
+            Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse("content://dummy"), "*/*"),
+            Intent("android.provider.action.PICK_IMAGES")
+        )
+
+        probes.forEach { intent ->
+            pm.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+                ?.forEach { ri ->
+                    val pkg = ri.activityInfo?.packageName ?: return@forEach
+                    val label = ri.loadLabel(pm)?.toString() ?: pkg
+                    if (!out.containsKey(pkg)) out[pkg] = label
+                }
+        }
+
+        // map to list sorted by label
+        return out.entries
+            .map { FM(it.value, it.key) }
+            .sortedBy { it.label.lowercase() }
     }
 }

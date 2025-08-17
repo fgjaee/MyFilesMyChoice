@@ -1,0 +1,56 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace "com.example.filemanagerredirect"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.example.filemanagerredirect"
+        minSdk 24
+        targetSdk 34
+        versionCode 3
+        versionName "1.2-global-dp"
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+}
+
+// Guard against metadata conflicts on CI
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.core:core-ktx:1.13.1'
+        force 'androidx.appcompat:appcompat:1.7.0'
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://api.xposed.info/' }
+}
+
+dependencies {
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "androidx.core:core-ktx:1.13.1"
+
+    // Use JAR artifacts for Xposed API to avoid AAR metadata checks
+    compileOnly "de.robv.android.xposed:api:82@jar"
+    compileOnly "de.robv.android.xposed:api:82:sources@jar"
+}

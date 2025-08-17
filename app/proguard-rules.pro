@@ -1,0 +1,3 @@
+-keep class de.robv.android.xposed.** { *; }
+-keep class com.example.filemanagerredirect.** { *; }
+-dontwarn de.robv.android.xposed.**

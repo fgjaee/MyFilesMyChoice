@@ -11,6 +11,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Ensure gradle.properties exists
+        run: |
+          cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          EOF
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:

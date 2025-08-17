@@ -1,46 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string-array name="known_file_manager_packages">
-        <item>bin.mt.plus</item>
-        <item>bin.mt.plus.canary</item>
-        <item>com.alphainventor.filemanager</item>
-        <item>com.amaze.filemanager</item>
-        <item>com.android.documentsui</item>
-        <item>com.asus.filemanager</item>
-        <item>com.coloros.filemanager</item>
-        <item>com.cxinventor.file.explorer</item>
-        <item>com.ghisler.android.TotalCommander</item>
-        <item>com.ghostsq.commander</item>
-        <item>com.google.android.apps.nbu.files</item>
-        <item>com.htc.filemanager</item>
-        <item>com.huawei.hidisk</item>
-        <item>com.lenovo.FileBrowser</item>
-        <item>com.lge.filemanager</item>
-        <item>com.lonelycatgames.Xplore</item>
-        <item>com.marc.files</item>
-        <item>com.mdroiddev.filemanager</item>
-        <item>com.mi.android.globalFileexplorer</item>
+        <!-- Popular third-party -->
         <item>com.mixplorer</item>
         <item>com.mixplorer.silver</item>
-        <item>com.mobisystems.fileman</item>
-        <item>com.motorola.filemanager</item>
+        <item>bin.mt.plus</item>
+        <item>bin.mt.plus.canary</item>
+        <item>ru.zdevs.zarchiver</item>
+        <item>pl.solidexplorer2</item>
+        <item>com.lonelycatgames.Xplore</item>
+        <item>com.ghisler.android.TotalCommander</item>
         <item>com.nextapp.fx</item>
-        <item>com.oneplus.filemanager</item>
-        <item>com.oppo.filemanager</item>
-        <item>com.realme.filemanager</item>
-        <item>com.rs.explorer.filemanager</item>
-        <item>com.sec.android.app.myfiles</item>
         <item>com.simplemobiletools.filemanager</item>
         <item>com.simplemobiletools.filemanager.pro</item>
-        <item>com.sonymobile.FileExplorer</item>
-        <item>com.speedsoftware.rootexplorer</item>
-        <item>com.transsion.filemanager</item>
-        <item>com.vivo.filemanager</item>
-        <item>dev.dworks.apps.anexplorer</item>
+        <item>com.amaze.filemanager</item>
+        <item>com.cxinventor.file.explorer</item>
         <item>me.zhanghai.android.files</item>
-        <item>org.doublecmd</item>
+        <item>dev.dworks.apps.anexplorer</item>
+        <item>com.estrongs.android.pop</item>
         <item>org.openintents.filemanager</item>
+        <item>org.doublecmd</item>
         <item>pl.mkexplorer.k</item>
-        <item>pl.solidexplorer2</item>
-        <item>ru.zdevs.zarchiver</item>
+        <item>com.speedsoftware.rootexplorer</item>
+        <item>com.mobisystems.fileman</item>
+        <item>com.rs.explorer.filemanager</item>
+        <item>com.marc.files</item>
+        <item>com.mdroiddev.filemanager</item>
+        <item>com.ghostsq.commander</item>
+        <item>com.electrodev.filemanager</item>
+
+        <!-- Google -->
+        <item>com.google.android.documentsui</item>
+        <item>com.android.documentsui</item>
+        <item>com.google.android.apps.nbu.files</item>
+
+        <!-- Samsung -->
+        <item>com.sec.android.app.myfiles</item>
+        <item>com.samsung.android.myfiles</item>
+
+        <!-- Xiaomi / Redmi / POCO -->
+        <item>com.mi.android.globalFileexplorer</item>
+        <item>com.mi.android.fileexplorer</item>
+        <item>com.xiaomi.midrop</item>
+
+        <!-- OnePlus / Oplus -->
+        <item>com.oneplus.filemanager</item>
+        <item>cn.oneplus.filemanager</item>
+        <item>com.oplus.filemanager</item>
+
+        <!-- Oppo -->
+        <item>com.coloros.filemanager</item>
+        <item>com.oppo.filemanager</item>
+
+        <!-- Realme -->
+        <item>com.realme.filemanager</item>
+
+        <!-- Vivo -->
+        <item>com.vivo.filemanager</item>
+
+        <!-- Huawei / Honor -->
+        <item>com.huawei.hidisk</item>
+        <item>com.hihonor.filemanager</item>
+
+        <!-- LG -->
+        <item>com.lge.filemanager</item>
+
+        <!-- Sony -->
+        <item>com.sonymobile.FileExplorer</item>
+
+        <!-- HTC -->
+        <item>com.htc.filemanager</item>
+
+        <!-- Motorola -->
+        <item>com.motorola.filemanager</item>
+
+        <!-- Lenovo -->
+        <item>com.lenovo.FileBrowser</item>
+        <item>com.lenovo.filemanager</item>
+
+        <!-- Nokia / HMD -->
+        <item>com.hmdglobal.filemanager</item>
+
+        <!-- Asus -->
+        <item>com.asus.filemanager</item>
+
+        <!-- ZTE -->
+        <item>com.zte.filemanager</item>
+
+        <!-- Alcatel / TCL -->
+        <item>com.alcatel.filemanager</item>
+        <item>com.tcl.filemanager</item>
+
+        <!-- Transsion Group (Tecno / Infinix / Itel) -->
+        <item>com.transsion.filemanager</item>
+
+        <!-- Micromax -->
+        <item>com.mm.filemanager</item>
+
+        <!-- Lava -->
+        <item>com.lava.filemanager</item>
+
+        <!-- Panasonic -->
+        <item>com.panasonic.filemanager</item>
+
+        <!-- Sharp -->
+        <item>jp.co.sharp.android.FileManager</item>
+
+        <!-- Acer -->
+        <item>com.acer.filemanager</item>
+
+        <!-- Intex -->
+        <item>com.intex.filemanager</item>
+
+        <!-- Gionee -->
+        <item>com.gionee.filemanager</item>
+
+        <!-- Coolpad -->
+        <item>com.coolpad.filemanager</item>
+
+        <!-- YU -->
+        <item>com.yu.filemanager</item>
+
+        <!-- Transcend (niche) -->
+        <item>com.transcend.filemanager</item>
+
+        <!-- File Manager+ (Flashlight +) -->
+        <item>com.alphainventor.filemanager</item>
     </string-array>
 </resources>

@@ -2,90 +2,103 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Package visibility for chooser + file managers -->
-    <queries>
-        <!-- Common file-pick actions -->
-        <intent>
-            <action android:name="android.intent.action.GET_CONTENT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.OPEN_DOCUMENT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.CREATE_DOCUMENT" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.PICK" />
-        </intent>
-        <!-- Android 13+ multi picker -->
-        <intent>
-            <action android:name="android.provider.action.PICK_IMAGES" />
-        </intent>
+    <!-- ===== Permissions ===== -->
+    <!-- Only needed for package visibility + optional legacy storage interop -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
 
-        <!-- Popular file managers (package visibility) -->
+    <!-- ===== Visibility queries (Android 11+) ===== -->
+    <queries>
+        <!-- The kinds of intents we care about -->
+        <intent><action android:name="android.intent.action.GET_CONTENT" /></intent>
+        <intent><action android:name="android.intent.action.OPEN_DOCUMENT" /></intent>
+        <intent><action android:name="android.intent.action.OPEN_DOCUMENT_TREE" /></intent>
+        <intent><action android:name="android.intent.action.CREATE_DOCUMENT" /></intent>
+        <intent><action android:name="android.intent.action.PICK" /></intent>
+
+        <!-- Popular file managers -->
+        <package android:name="com.android.documentsui" />
+        <package android:name="com.google.android.documentsui" />
+        <package android:name="com.google.android.apps.nbu.files" />
         <package android:name="com.mixplorer" />
         <package android:name="com.mixplorer.silver" />
-        <package android:name="com.google.android.apps.nbu.files" />
         <package android:name="pl.solidexplorer2" />
         <package android:name="com.lonelycatgames.Xplore" />
         <package android:name="com.speedsoftware.rootexplorer" />
+        <package android:name="com.speedsoftware.explorer" />
         <package android:name="com.amaze.filemanager" />
-        <package android:name="com.cxinventor.file.explorer" /> <!-- CX File Explorer -->
+        <package android:name="com.cxinventor.file.explorer" />
+        <package android:name="com.nextapp.fx" />
         <package android:name="nextapp.fx" />
+        <package android:name="nextapp.fx.rk" />
+        <package android:name="nextapp.fx.plus" />
+        <package android:name="me.zhanghai.android.files" />
         <package android:name="com.ghisler.android.TotalCommander" />
         <package android:name="com.asus.filemanager" />
         <package android:name="com.sec.android.app.myfiles" />
+        <package android:name="com.coloros.filemanager" />
         <package android:name="com.oneplus.filemanager" />
-        <package android:name="me.zhanghai.android.files" />
-        <package android:name="ru.zdevs.zarchiver" />
-        <package android:name="com.alphainventor.filemanager" /> <!-- File Manager+ -->
-        <package android:name="com.transsion.filemanager" />
         <package android:name="com.huawei.hidisk" />
         <package android:name="com.mi.android.globalFileexplorer" />
-        <package android:name="com.oppo.filemanager" />
-        <package android:name="com.coloros.filemanager" />
-        <package android:name="com.vivo.filemanager" />
-        <package android:name="com.realme.filemanager" />
+        <package android:name="com.android.fileexplorer" />
         <package android:name="com.motorola.filemanager" />
-        <package android:name="com.htc.filemanager" />
-        <package android:name="com.hmdglobal.app.filemanager" />
         <package android:name="com.lge.filemanager" />
-        <package android:name="com.sonyericsson.android.filemanager" />
-        <package android:name="com.microsoft.files" /> <!-- Microsoft Files -->
-        <package android:name="com.file.manager" /> <!-- generic vendors -->
-        <package android:name="com.files.fileexplorer" />
+        <package android:name="com.htc.filemanager" />
+        <package android:name="com.rs.explorer.filemanager" />
+        <package android:name="com.alphainventor.filemanager" />
+        <package android:name="com.simplemobiletools.filemanager.pro" />
+        <package android:name="com.simplemobiletools.filemanager" />
     </queries>
 
     <application
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.FileManagerRedirect">
 
-        <!-- LSPosed / Xposed metadata -->
-        <meta-data
-            android:name="xposedmodule"
-            android:value="true" />
-        <meta-data
-            android:name="xposeddescription"
-            android:value="Redirects file-manager related intents to your preferred file manager." />
-        <!-- 93 = Xposed API 93 (LSPosed is fine with this) -->
-        <meta-data
-            android:name="xposedminversion"
-            android:value="93" />
-
-        <!-- Settings UI -->
+        <!-- Launcher -->
         <activity
-            android:name=".SettingsActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Settings -->
+        <activity
+            android:name=".SettingsActivity"
+            android:label="@string/title_activity_settings"
+            android:exported="false" />
+
+        <!-- Redirect shim that forwards to the chosen file manager -->
+        <activity
+            android:name=".RedirectActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.FileManagerRedirect.NoActionBar">
+            <intent-filter>
+                <!-- cover common picker actions -->
+                <action android:name="android.intent.action.OPEN_DOCUMENT" />
+                <action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
+                <action android:name="android.intent.action.CREATE_DOCUMENT" />
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <action android:name="android.intent.action.PICK" />
+
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 

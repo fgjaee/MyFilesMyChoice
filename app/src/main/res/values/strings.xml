@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">File Manager Redirect</string>
+    <string name="toggle_enable">Enable redirect</string>
+    <string name="toggle_fallback">Allow system fallback</string>
+    <string name="save">Save</string>
+    <string name="select_manager">Select preferred file manager</string>
+    <string name="toggle_debug">Show debug toasts</string>
+    <string name="test_screen">Open Test Intents</string>
+</resources>

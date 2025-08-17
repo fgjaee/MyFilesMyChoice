@@ -1,111 +1,57 @@
 package com.example.filemanagerredirect
 
+import android.app.Activity
 import android.app.AndroidAppHelper
+import android.app.Application
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
-import android.os.Binder
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.MediaStore
 import de.robv.android.xposed.IXposedHookLoadPackage
+import de.robv.android.xposed.IXposedHookZygoteInit
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
-class FileManagerRedirectHook : IXposedHookLoadPackage {
+class FileManagerRedirectHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
 
     companion object {
         private const val TAG = "FMRedirect"
-        private const val PREFS = "fm_redirect_prefs"
-        private const val KEY_ENABLED = "enabled"
-        private const val KEY_STEALTH = "stealth_mode"
-        private const val KEY_SELECTED = "selected_fm_pkg"
-        private const val KEY_FALLBACK_SAF = "fallback_saf"
-
-        // refuse to hook these even if scoped by mistake
-        private val DO_NOT_TOUCH = setOf(
-            "com.google.android.gms",                      // Play Integrity
-            "com.google.android.gms.policy_sidecar",
-            "com.google.android.gsf",
-            "com.netflix.mediaclient",
-            "com.disney.disneyplus",
-            "com.amazon.avod.thirdpartyclient",
-            "com.paypal.android.p2pmobile",
-            // add your own banks/games here as needed
-        )
-
-        // intent actions we care about
-        private val INTERESTING = setOf(
+        private val REDIRECT_ACTIONS = setOf(
             Intent.ACTION_GET_CONTENT,
-            Intent.ACTION_PICK,
-            Intent.ACTION_VIEW,
-            Intent.ACTION_CHOOSER,
             Intent.ACTION_OPEN_DOCUMENT,
             Intent.ACTION_OPEN_DOCUMENT_TREE,
             Intent.ACTION_CREATE_DOCUMENT,
-            "android.provider.action.PICK_IMAGES",          // Picker 13+
-            "android.provider.action.PICK_IMAGES_FROM_SYSTEM"
+            Intent.ACTION_PICK,
         )
+    }
 
-        // known file managers (more can be added)
-        private val KNOWN_FMS = listOf(
-            "com.mixplorer", "com.mixplorer.silver",
-            "pl.solidexplorer2",
-            "com.lonelycatgames.Xplore",
-            "com.speedsoftware.rootexplorer",
-            "com.amaze.filemanager",
-            "com.cxinventor.file.explorer",                 // CX
-            "nextapp.fx", "com.nextapp.fx",                // FX (two ids seen)
-            "me.zhanghai.android.files",                   // Material Files
-            "com.ghisler.android.TotalCommander",
-            "com.oneplus.filemanager",
-            "com.google.android.apps.nbu.files",
-            "bin.mt.plus", "bin.mt.plus.canary",
-            "ru.zdevs.zarchiver",
-            "com.soft.explorer",
-            "org.kman.AmazeFileUtilities"
-        )
+    override fun initZygote(startupParam: IXposedHookZygoteInit.StartupParam?) {
+        // no-op
     }
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
-        // skip our own and sensitive pkgs
-        if (lpparam.packageName == "com.example.filemanagerredirect") return
-        if (lpparam.packageName in DO_NOT_TOUCH) return
+        // Hook only in framework-level processes to affect all apps when you scope just "System Framework"
+        val pkg = lpparam.packageName ?: return
+        val isFramework =
+            pkg == "android" ||
+            pkg == "com.android.systemui" ||
+            pkg == "com.google.android.systemui" ||
+            pkg == "com.android.settings"
 
-        // Hook Activity.startActivity / startActivityForResult
-        hookActivity(lpparam)
-        // Also hook ContextWrapper.startActivity (many components call this)
-        hookContextStartActivity(lpparam)
-        // And hook Intent.createChooser to rewrite the target inside choosers
-        hookCreateChooser(lpparam)
-    }
+        if (!isFramework) return
 
-    private fun hookActivity(lpparam: XC_LoadPackage.LoadPackageParam) {
-        XposedHelpers.findAndHookMethod(
-            "android.app.Activity",
-            lpparam.classLoader,
-            "startActivity",
-            Intent::class.java,
-            object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
-                    val inIntent = param.args[0] as? Intent ?: return
-                    rewriteIfNeeded(inIntent)?.let { param.args[0] = it }
-                }
-            }
-        )
-
-        // startActivityForResult(Intent, int)
-        XposedHelpers.findAndHookMethod(
-            "android.app.Activity",
-            lpparam.classLoader,
-            "startActivityForResult",
-            Intent::class.java, Int::class.javaPrimitiveType,
-            object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
-                    val inIntent = param.args[0] as? Intent ?: return
-                    rewriteIfNeeded(inIntent)?.let { param.args[0] = it }
-                }
-            }
-        )
+        try {
+            hookContextStartActivity(lpparam)
+            hookActivityStartActivity(lpparam)
+            hookCreateChooser(lpparam)
+            XposedBridge.log("$TAG: hooks installed in $pkg")
+        } catch (t: Throwable) {
+            XposedBridge.log("$TAG: hook failure in $pkg: ${t.message}")
+        }
     }
 
     private fun hookContextStartActivity(lpparam: XC_LoadPackage.LoadPackageParam) {
@@ -116,101 +62,155 @@ class FileManagerRedirectHook : IXposedHookLoadPackage {
             Intent::class.java,
             object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
-                    val inIntent = param.args[0] as? Intent ?: return
-                    rewriteIfNeeded(inIntent)?.let { param.args[0] = it }
+                    val intent = param.args[0] as? Intent ?: return
+                    val ctx = (param.thisObject as? Context) ?: return
+                    rewriteIfNeeded(ctx, intent)?.let { param.args[0] = it }
+                }
+            }
+        )
+    }
+
+    private fun hookActivityStartActivity(lpparam: XC_LoadPackage.LoadPackageParam) {
+        // Activity.startActivity(Intent)
+        XposedHelpers.findAndHookMethod(
+            "android.app.Activity",
+            lpparam.classLoader,
+            "startActivity",
+            Intent::class.java,
+            object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    val intent = param.args[0] as? Intent ?: return
+                    val act = param.thisObject as? Activity ?: return
+                    rewriteIfNeeded(act, intent)?.let { param.args[0] = it }
+                }
+            }
+        )
+
+        // Activity.startActivityForResult(Intent, int)
+        XposedHelpers.findAndHookMethod(
+            "android.app.Activity",
+            lpparam.classLoader,
+            "startActivityForResult",
+            Intent::class.java,
+            Int::class.javaPrimitiveType,
+            object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    val intent = param.args[0] as? Intent ?: return
+                    val act = param.thisObject as? Activity ?: return
+                    rewriteIfNeeded(act, intent)?.let { param.args[0] = it }
                 }
             }
         )
     }
 
     private fun hookCreateChooser(lpparam: XC_LoadPackage.LoadPackageParam) {
+        // Intercept Intent.createChooser(inner, title) -> replace INNER intent if needed
         XposedHelpers.findAndHookMethod(
-            Intent::class.java,
+            "android.content.Intent",
+            lpparam.classLoader,
             "createChooser",
-            Intent::class.java, CharSequence::class.java,
+            Intent::class.java,
+            CharSequence::class.java,
             object : XC_MethodHook() {
-                override fun beforeHookedMethod(param: MethodHookParam) {
-                    val base = param.args[0] as? Intent ?: return
-                    rewriteIfNeeded(base)?.let { param.args[0] = it }
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    val returned = param.result as? Intent ?: return
+                    val extras = returned.extras ?: return
+                    val inner = extras.getParcelable<Intent>(Intent.EXTRA_INTENT) ?: return
+                    val ctx = currentContext() ?: return
+                    val rewritten = rewriteIfNeeded(ctx, inner) ?: return
+                    extras.putParcelable(Intent.EXTRA_INTENT, rewritten)
+                    param.result = returned
+                    XposedBridge.log("$TAG: chooser inner replaced")
                 }
             }
         )
     }
 
-    private fun rewriteIfNeeded(inIntent: Intent): Intent? {
-        val ctx = AndroidAppHelper.currentApplication() ?: return null
-        val sp = safePrefs(ctx)
+    /** Core logic: if intent matches file-picker actions, retarget to selected (or best available) FM. */
+    private fun rewriteIfNeeded(ctx: Context, inIntent: Intent): Intent? {
+        val action = inIntent.action ?: return null
 
-        if (!sp.getBoolean(KEY_ENABLED, false)) return null
+        // SPECIAL: Android 13+ PICK_IMAGES
+        val isPickImages = (Build.VERSION.SDK_INT >= 33 && action == MediaStore.ACTION_PICK_IMAGES)
+        val isKnown = action in REDIRECT_ACTIONS || isPickImages
+        if (!isKnown) return null
 
-        // stealth mode: only touch if it looks like a file-picker / file-view intent
-        val stealth = sp.getBoolean(KEY_STEALTH, true)
-        if (stealth && !isInteresting(inIntent)) return null
-
-        val preferred = sp.getString(KEY_SELECTED, null)
-        val fallbackSaf = sp.getBoolean(KEY_FALLBACK_SAF, true)
-
-        // If user chose a specific FM and it’s installed, force it via setPackage()
-        val targetPkg = when {
-            !preferred.isNullOrBlank() && isInstalled(ctx, preferred) -> preferred
-            else -> autoDetectInstalledFm(ctx)
-        } ?: run {
-            // nothing installed: optionally let SAF/system handle it
-            return if (fallbackSaf) null else null
-        }
-
-        // For chooser, rewrite the inner intent
-        val intent = if (inIntent.action == Intent.ACTION_CHOOSER) {
-            (inIntent.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent) ?: inIntent
-        } else inIntent
-
-        // Only force package when the action is about picking/opening content
-        if (isInteresting(intent)) {
-            // Don’t clobber content uri/type; just direct to our package
-            intent.setPackage(targetPkg)
-            // Some apps use VIEW on content://; allow persisted permissions
-            if (intent.action == Intent.ACTION_OPEN_DOCUMENT || intent.action == Intent.ACTION_CREATE_DOCUMENT) {
-                intent.addFlags(
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-                )
-            }
-            XposedBridge.log("$TAG: redirected -> $targetPkg for ${intent.action}")
-        }
-
-        // If original was chooser, put the modified base back
-        if (inIntent.action == Intent.ACTION_CHOOSER) {
-            inIntent.putExtra(Intent.EXTRA_INTENT, intent)
-            return inIntent
-        }
-        return intent
-    }
-
-    private fun safePrefs(appCtx: Context): android.content.SharedPreferences {
-        // device-protected so prefs are readable in early/isolated processes
-        return try {
-            val de = appCtx.createDeviceProtectedStorageContext()
-            de.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = try {
+            val de = ctx.createDeviceProtectedStorageContext()
+            de.getSharedPreferences(Keys.PREFS, Context.MODE_PRIVATE)
         } catch (_: Throwable) {
-            appCtx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            ctx.getSharedPreferences(Keys.PREFS, Context.MODE_PRIVATE)
         }
+
+        val enabled = prefs.getBoolean(Keys.PREF_ENABLED, true)
+        if (!enabled) return null
+
+        val selected = prefs.getString(Keys.PREF_SELECTED_PKG, Keys.PKG_AUTO) ?: Keys.PKG_AUTO
+        val chosenPkg = pickTargetPackage(ctx.packageManager, selected)
+
+        if (chosenPkg == null) {
+            XposedBridge.log("$TAG: no suitable FM found; leaving intent as-is ($action)")
+            return null
+        }
+
+        // Build explicit intent that mirrors the original request
+        val explicit = Intent(inIntent)
+        explicit.`package` = null
+        explicit.component = null
+        explicit.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        // Resolve a best component inside chosen package
+        val resolved = ctx.packageManager.queryIntentActivities(explicit, PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName == chosenPkg }
+
+        if (resolved != null) {
+            explicit.component = ComponentName(chosenPkg, resolved.activityInfo.name)
+        } else {
+            // As a fallback, just set the package; let the system pick the default activity from that app
+            explicit.`package` = chosenPkg
+        }
+
+        XposedBridge.log("$TAG: redirect $action -> $chosenPkg")
+        return explicit
     }
 
-    private fun isInteresting(i: Intent?): Boolean {
-        if (i == null) return false
-        if (i.action in INTERESTING) return true
-        // VIEW with content:// or file:// is interesting
-        if (i.action == Intent.ACTION_VIEW) {
-            val u: Uri? = i.data
-            return u != null && (u.scheme == "content" || u.scheme == "file")
+    private fun pickTargetPackage(pm: PackageManager, selected: String): String? {
+        if (selected != Keys.PKG_AUTO) {
+            return try {
+                pm.getPackageInfo(selected, 0)
+                selected
+            } catch (_: Throwable) {
+                // selected not installed; fall through
+                findAnyInstalled(pm)
+            }
         }
-        return false
+        return findAnyInstalled(pm)
     }
 
-    private fun isInstalled(ctx: Context, pkg: String): Boolean =
-        try { ctx.packageManager.getPackageInfo(pkg, 0); true } catch (_: Throwable) { false }
+    private fun findAnyInstalled(pm: PackageManager): String? {
+        // Prefer a sane order; otherwise pick first that resolves actions
+        val order = FileManagerCatalog.PACKAGES
+        for (pkg in order) {
+            try {
+                pm.getPackageInfo(pkg, 0)
+                return pkg
+            } catch (_: Throwable) { /* not installed */ }
+        }
+        // As a last resort, scan resolvers for OPEN_DOCUMENT
+        val probe = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            type = "*/*"
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
+        val list = pm.queryIntentActivities(probe, PackageManager.MATCH_DEFAULT_ONLY)
+        return list.firstOrNull()?.activityInfo?.packageName
+    }
 
-    private fun autoDetectInstalledFm(ctx: Context): String? =
-        KNOWN_FMS.firstOrNull { isInstalled(ctx, it) }
+    private fun currentContext(): Context? {
+        return try {
+            val app: Application? = AndroidAppHelper.currentApplication()
+            app ?: AndroidAppHelper.currentApplication()
+        } catch (_: Throwable) {
+            null
+        }
+    }
 }

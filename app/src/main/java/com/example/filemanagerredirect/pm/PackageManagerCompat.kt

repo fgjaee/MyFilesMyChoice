@@ -2,17 +2,26 @@ package com.example.filemanagerredirect.pm
 
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.pm.VersionedPackage
 import android.os.Build
 
-@Suppress("DEPRECATION")
+/**
+ * Safe wrapper for getPackageInfo across API levels.
+ * Returns null if the package can't be found (or on any error).
+ */
 fun PackageManager.getPackageInfoCompat(packageName: String, flags: Int = 0): PackageInfo? {
     return try {
         if (Build.VERSION.SDK_INT >= 33) {
-            getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags.toLong()))
+            @Suppress("DEPRECATION")
+            getPackageInfo(
+                VersionedPackage(packageName, 0),
+                PackageManager.PackageInfoFlags.of(flags.toLong())
+            )
         } else {
+            @Suppress("DEPRECATION")
             getPackageInfo(packageName, flags)
         }
-    } catch (_: Exception) {
+    } catch (_: Throwable) {
         null
     }
 }

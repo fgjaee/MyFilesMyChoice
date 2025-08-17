@@ -1,0 +1,18 @@
+package com.example.filemanagerredirect.pm
+
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.os.Build
+
+@Suppress("DEPRECATION")
+fun PackageManager.getPackageInfoCompat(packageName: String, flags: Int = 0): PackageInfo? {
+    return try {
+        if (Build.VERSION.SDK_INT >= 33) {
+            getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags.toLong()))
+        } else {
+            getPackageInfo(packageName, flags)
+        }
+    } catch (_: Exception) {
+        null
+    }
+}

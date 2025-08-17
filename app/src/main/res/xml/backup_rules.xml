@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude caches or anything you don't want in backups -->
+    <exclude domain="cache" path="."/>
+    <!-- Keep shared prefs so the user’s selection sticks -->
+    <include domain="sharedpref" path="."/>
+    <!-- Include your app files if you store anything there -->
+    <include domain="files" path="."/>
+</full-backup-content>

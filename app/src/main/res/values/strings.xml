@@ -1,5 +1,10 @@
 <resources>
     <string name="app_name">File Picker ReDirekt</string>
+
+    <!-- Settings screen title required by AndroidManifest -->
+    <string name="title_activity_settings">Settings</string>
+
+    <!-- UI text -->
     <string name="enable_redirect">Enable redirect</string>
     <string name="stealth_mode">Stealth mode (only file-picker intents)</string>
     <string name="fallback_saf">Fallback to system picker when unsupported</string>

@@ -6,56 +6,62 @@ import android.content.pm.PackageManager
 import com.example.filemanagerredirect.pm.getPackageInfoCompat
 
 /**
- * Simple “hook” helper the app can call to decide which file manager package
- * should handle a file-picker style intent.
- *
- * This version does NOT depend on any Xposed/LSPosed APIs, so it compiles in a
- * normal app build. If you later wire it into LSPosed, you can reuse the same
- * decision logic.
+ * Chooses which app should receive a file-picker intent.
+ * No LSPosed classes are referenced; works in a plain app build.
  */
 object FileManagerRedirectHook {
 
     /**
-     * Returns a copy of [original] that targets the best file manager package,
-     * or null if redirect should not occur.
+     * Returns a copy of [original] targeted at the best file manager package,
+     * or null if no redirect should occur (caller can show chooser/system picker).
      */
     fun pickBestHandler(context: Context, original: Intent): Intent? {
-        val prefs = context.getSharedPreferences(Keys.PREFS, Context.MODE_PRIVATE)
+        val prefs = try {
+            // handle direct-boot/device-protected context if available
+            val de = context.createDeviceProtectedStorageContext()
+            de.getSharedPreferences(Prefs.PREFS_NAME, Context.MODE_PRIVATE)
+        } catch (_: Throwable) {
+            context.getSharedPreferences(Prefs.PREFS_NAME, Context.MODE_PRIVATE)
+        }
 
         // Master toggle
-        val enabled = prefs.getBoolean(Keys.KEY_ENABLED, true)
+        val enabled = prefs.getBoolean(Prefs.KEY_ENABLED, true)
         if (!enabled) return null
 
-        val selected = prefs.getString(Keys.KEY_PACKAGE, PKG_AUTO) ?: PKG_AUTO
-        val stealth = prefs.getBoolean(Keys.KEY_STEALTH, false)
-        val fallbackSaf = prefs.getBoolean(Keys.KEY_FALLBACK_SAF, true)
+        val selected = prefs.getString(Prefs.KEY_PACKAGE, Prefs.PKG_AUTO) ?: Prefs.PKG_AUTO
+        val stealth = prefs.getBoolean(Prefs.KEY_STEALTH, false)
+        val fallbackSaf = prefs.getBoolean(Prefs.KEY_FALLBACK_SAF, true)
 
         val pm: PackageManager = context.packageManager
 
-        // If user picked a specific package, prefer it; otherwise scan our PACKAGES.
-        val candidatePackages: List<String> =
-            if (selected.isNotEmpty()) {
-                listOf(selected)
-            } else {
-                PACKAGES.filter { pkg -> pm.getPackageInfoCompat(pkg, 0) != null }
-            }
-
-        // Nothing installed we know about → either fall back (return null) or keep chooser
-        val targetPkg = candidatePackages.firstOrNull()
-            ?: return if (fallbackSaf) null else null
-
-        // Build the redirected intent; keep categories/extras from original
-        val redirected = Intent(original).apply {
-            // Direct target
-            `package` = targetPkg
-            // Remove any selector to avoid being overridden
-            selector = null
-            // Ensure new task if launching from background contexts
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // Known packages come from resources so we don't need a hardcoded PACKAGES constant.
+        val known = try {
+            context.resources.getStringArray(R.array.known_file_manager_packages).toList()
+        } catch (_: Throwable) {
+            emptyList()
         }
 
-        // If "stealth" is on, we avoid showing a chooser at all by returning a direct intent.
-        // If not stealth, the caller (e.g., RedirectActivity) can still wrap this in a chooser.
-        return redirected
+        // Build the candidate list:
+        // 1) If a specific package is selected, use that.
+        // 2) Otherwise, use the first installed package from our known list.
+        val candidatePackages: List<String> = if (selected.isNotEmpty()) {
+            listOf(selected)
+        } else {
+            known.filter { pkg -> pm.getPackageInfoCompat(pkg) != null }
+        }
+
+        val targetPkg = candidatePackages.firstOrNull()
+            ?: return if (fallbackSaf) null else null // nothing installed, let system handle it
+
+        // Create a direct intent to the chosen package.
+        return Intent(original).apply {
+            `package` = targetPkg
+            selector = null
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }.also {
+            // If you later want a NON-stealth option, your caller can wrap this in a chooser.
+            // Here we just return the direct intent; "stealth" only influences the caller behavior.
+            // (No additional code needed here for stealth=true.)
+        }
     }
 }

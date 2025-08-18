@@ -1,67 +1,117 @@
 package com.example.filemanagerredirect
 
 import android.content.Context
-import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import com.example.filemanagerredirect.pm.getPackageInfoCompat
+import android.content.pm.VersionedPackage
+import android.os.Build
+import android.util.Log
 
 /**
- * Chooses which app should receive a file-picker intent.
- * No LSPosed classes are referenced; works in a plain app build.
+ * Central helper for deciding which file manager package to use.
+ * - Reads user prefs (enabled flag, primary choice).
+ * - If set to "auto", picks the best installed manager from our known list.
  */
 object FileManagerRedirectHook {
 
+    private const val TAG = "FMRedirectHook"
+    private const val PKG_AUTO = "auto"
+    private const val FALLBACK_SYSTEM = "com.android.documentsui"
+
     /**
-     * Returns a copy of [original] targeted at the best file manager package,
-     * or null if no redirect should occur (caller can show chooser/system picker).
+     * Returns the package name of the chosen file manager, or null/empty if redirect is disabled.
      */
-    fun pickBestHandler(context: Context, original: Intent): Intent? {
-        val prefs = try {
-            // handle direct-boot/device-protected context if available
-            val de = context.createDeviceProtectedStorageContext()
+    fun resolveTargetPackage(ctx: Context): String? {
+        val sp = try {
+            val de = ctx.createDeviceProtectedStorageContext()
             de.getSharedPreferences(Prefs.PREFS_NAME, Context.MODE_PRIVATE)
         } catch (_: Throwable) {
-            context.getSharedPreferences(Prefs.PREFS_NAME, Context.MODE_PRIVATE)
+            ctx.getSharedPreferences(Prefs.PREFS_NAME, Context.MODE_PRIVATE)
         }
 
-        // Master toggle
-        val enabled = prefs.getBoolean(Prefs.KEY_ENABLED, true)
-        if (!enabled) return null
+        val enabled = sp.getBoolean(Prefs.KEY_ENABLED, true)
+        if (!enabled) {
+            Log.d(TAG, "Redirect is disabled in prefs")
+            return null
+        }
 
-        val selected = prefs.getString(Prefs.KEY_PACKAGE, Prefs.PKG_AUTO) ?: Prefs.PKG_AUTO
-        val stealth = prefs.getBoolean(Prefs.KEY_STEALTH, false)
-        val fallbackSaf = prefs.getBoolean(Prefs.KEY_FALLBACK_SAF, true)
+        val selected = sp.getString(Prefs.KEY_PRIMARY_MANAGER, PKG_AUTO) ?: PKG_AUTO
+        if (selected != PKG_AUTO) {
+            Log.d(TAG, "Using user-selected manager: $selected")
+            return selected
+        }
 
-        val pm: PackageManager = context.packageManager
-
-        // Known packages come from resources so we don't need a hardcoded PACKAGES constant.
+        // Auto mode: load the known manager list from resources and filter to those installed.
         val known = try {
-            context.resources.getStringArray(R.array.known_file_manager_packages).toList()
+            ctx.resources.getStringArray(R.array.known_file_manager_packages).toList()
         } catch (_: Throwable) {
             emptyList()
         }
 
-        // Build the candidate list:
-        // 1) If a specific package is selected, use that.
-        // 2) Otherwise, use the first installed package from our known list.
-        val candidatePackages: List<String> = if (selected.isNotEmpty()) {
-            listOf(selected)
+        val installed = filterInstalled(ctx.packageManager, known)
+        val best = chooseBest(installed) ?: FALLBACK_SYSTEM
+        Log.d(TAG, "Auto-selected manager: $best (installed=${installed.size})")
+        return best
+    }
+
+    /**
+     * Returns installed packages from the given list.
+     */
+    private fun filterInstalled(pm: PackageManager, candidates: List<String>): List<String> {
+        if (candidates.isEmpty()) return emptyList()
+        return candidates.filter { pkg ->
+            pm.getPackageInfoCompat(pkg) != null
+        }
+    }
+
+    /**
+     * Pick a "best" package from installed ones using a priority list, else first available.
+     */
+    private fun chooseBest(installed: List<String>): String? {
+        if (installed.isEmpty()) return null
+
+        val priority = listOf(
+            // Popular power users / root-capable first
+            "com.mixplorer",
+            "com.mixplorer.silver",
+            "bin.mt.plus",
+            "bin.mt.plus.canary",
+            "pl.solidexplorer2",
+            "nextapp.fx",
+            "com.speedsoftware.rootexplorer",
+            "com.lonelycatgames.Xplore",
+            // Stock / Google file apps next
+            "com.google.android.apps.nbu.files",
+            "com.android.documentsui",
+        )
+
+        priority.firstOrNull { it in installed }?.let { return it }
+        return installed.firstOrNull()
+    }
+}
+
+/* ------------------------------ Compat helpers ------------------------------ */
+
+/**
+ * Safe wrapper for getPackageInfo across API levels.
+ * Returns null if the package isn't found or any error occurs.
+ */
+private fun PackageManager.getPackageInfoCompat(
+    packageName: String,
+    flags: Int = 0
+): PackageInfo? {
+    return try {
+        if (Build.VERSION.SDK_INT >= 33) {
+            // Tiramisu+ API
+            getPackageInfo(
+                VersionedPackage(packageName, 0),
+                PackageManager.PackageInfoFlags.of(flags.toLong())
+            )
         } else {
-            known.filter { pkg -> pm.getPackageInfoCompat(pkg) != null }
+            @Suppress("DEPRECATION")
+            getPackageInfo(packageName, flags)
         }
-
-        val targetPkg = candidatePackages.firstOrNull()
-            ?: return if (fallbackSaf) null else null // nothing installed, let system handle it
-
-        // Create a direct intent to the chosen package.
-        return Intent(original).apply {
-            `package` = targetPkg
-            selector = null
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }.also {
-            // If you later want a NON-stealth option, your caller can wrap this in a chooser.
-            // Here we just return the direct intent; "stealth" only influences the caller behavior.
-            // (No additional code needed here for stealth=true.)
-        }
+    } catch (_: Throwable) {
+        null
     }
 }

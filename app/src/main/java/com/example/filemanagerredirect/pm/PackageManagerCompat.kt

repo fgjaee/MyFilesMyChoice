@@ -7,11 +7,12 @@ import android.os.Build
 
 /**
  * Safe wrapper for getPackageInfo across API levels.
- * Returns null if the package can't be found (or on any error).
+ * Returns null if the package isn't found or any error occurs.
  */
 fun PackageManager.getPackageInfoCompat(packageName: String, flags: Int = 0): PackageInfo? {
     return try {
         if (Build.VERSION.SDK_INT >= 33) {
+            // On Tiramisu+ you’re expected to use VersionedPackage + flags object
             @Suppress("DEPRECATION")
             getPackageInfo(
                 VersionedPackage(packageName, 0),

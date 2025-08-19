@@ -15,11 +15,10 @@ import android.util.Log
 object FileManagerRedirectHook {
 
     private const val TAG = "FMRedirectHook"
-    private const val PKG_AUTO = "auto"
     private const val FALLBACK_SYSTEM = "com.android.documentsui"
 
     /**
-     * Returns the package name of the chosen file manager, or null/empty if redirect is disabled.
+     * Returns the package name of the chosen file manager, or null if redirect is disabled.
      */
     fun resolveTargetPackage(ctx: Context): String? {
         val sp = try {
@@ -35,8 +34,11 @@ object FileManagerRedirectHook {
             return null
         }
 
-        val selected = sp.getString(Prefs.KEY_PRIMARY_MANAGER, PKG_AUTO) ?: PKG_AUTO
-        if (selected != PKG_AUTO) {
+        // Normalize legacy/blank values to Prefs.PKG_AUTO
+        val rawSelected = sp.getString(Prefs.KEY_PRIMARY_MANAGER, Prefs.PKG_AUTO)
+        val selected = Prefs.normalizeSelected(rawSelected)
+
+        if (selected != Prefs.PKG_AUTO) {
             Log.d(TAG, "Using user-selected manager: $selected")
             return selected
         }
@@ -49,7 +51,11 @@ object FileManagerRedirectHook {
         }
 
         val installed = filterInstalled(ctx.packageManager, known)
-        val best = chooseBest(installed) ?: FALLBACK_SYSTEM
+        val best = chooseBest(installed) ?: run {
+            Log.d(TAG, "No preferred manager installed; falling back to system picker: $FALLBACK_SYSTEM")
+            FALLBACK_SYSTEM
+        }
+
         Log.d(TAG, "Auto-selected manager: $best (installed=${installed.size})")
         return best
     }
@@ -59,9 +65,7 @@ object FileManagerRedirectHook {
      */
     private fun filterInstalled(pm: PackageManager, candidates: List<String>): List<String> {
         if (candidates.isEmpty()) return emptyList()
-        return candidates.filter { pkg ->
-            pm.getPackageInfoCompat(pkg) != null
-        }
+        return candidates.filter { pkg -> pm.getPackageInfoCompat(pkg) != null }
     }
 
     /**

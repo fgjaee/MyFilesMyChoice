@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.filemanagerredirect">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ===== Permissions (optional, kept as you had) ===== -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
@@ -84,7 +83,7 @@
             android:value="Redirects Android file picker intents to your chosen file manager." />
         <meta-data
             android:name="xposedminversion"
-            android:value="82" /> <!-- <- aligned to published API -->
+            android:value="93" />
 
         <!-- Launcher -->
         <activity
@@ -111,7 +110,6 @@
             android:launchMode="singleTop"
             android:theme="@style/Theme.FileManagerRedirect.NoActionBar">
             <intent-filter>
-                <!-- cover common picker actions -->
                 <action android:name="android.intent.action.OPEN_DOCUMENT" />
                 <action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
                 <action android:name="android.intent.action.CREATE_DOCUMENT" />

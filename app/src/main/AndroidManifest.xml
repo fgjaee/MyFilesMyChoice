@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.filemanagerredirect">
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ===== Permissions (optional, kept as you had) ===== -->
+    <!-- ===== Permissions (optional; keep only if you truly need them) ===== -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
@@ -23,52 +22,53 @@
         <intent><action android:name="android.intent.action.PICK" /></intent>
 
         <!-- Popular mainstream file managers -->
-        <package android:name="com.cxinventor.file.explorer" /> <!-- CX File Explorer -->
-        <package android:name="pl.solidexplorer2" /> <!-- Solid Explorer -->
-        <package android:name="com.lonelycatgames.Xplore" /> <!-- X-plore File Manager -->
-        <package android:name="com.amaze.filemanager" /> <!-- Amaze File Manager -->
-        <package android:name="com.alphainventor.filemanager" /> <!-- File Manager+ -->
-        <package android:name="tools.filemanager" /> <!-- File Manager (InShot) -->
-        <package android:name="com.metago.astro" /> <!-- ASTRO File Manager -->
-        <package android:name="pl.mkexplorer" /> <!-- MK Explorer -->
-        <package android:name="com.mobisystems.fileman" /> <!-- File Commander -->
-        <package android:name="com.google.android.apps.nbu.files" /> <!-- Files by Google -->
-        <package android:name="com.xfolder.filemanager" /> <!-- File Manager – XFolder -->
+        <package android:name="com.cxinventor.file.explorer" />
+        <package android:name="pl.solidexplorer2" />
+        <package android:name="com.lonelycatgames.Xplore" />
+        <package android:name="com.amaze.filemanager" />
+        <package android:name="com.alphainventor.filemanager" />
+        <package android:name="tools.filemanager" />
+        <package android:name="com.metago.astro" />
+        <package android:name="pl.mkexplorer" />
+        <package android:name="com.mobisystems.fileman" />
+        <package android:name="com.google.android.apps.nbu.files" />
+        <package android:name="com.xfolder.filemanager" />
 
         <!-- Root-capable & advanced -->
-        <package android:name="com.speedsoftware.rootexplorer" /> <!-- Root Explorer -->
-        <package android:name="com.ghisler.android.TotalCommander" /> <!-- Total Commander -->
-        <package android:name="com.ghisler.android.TotalCommander.plugins" /> <!-- TC Plugins -->
-        <package android:name="com.mixplorer.silver" /> <!-- MiXplorer Silver -->
-        <package android:name="com.mixplorer" /> <!-- MiXplorer (APK builds) -->
-        <package android:name="bin.mt.plus" /> <!-- MT Manager -->
-        <package android:name="com.rs.explorer.filemanager" /> <!-- RS File Manager -->
-        <package android:name="com.ghostsq.commander" /> <!-- Ghost Commander -->
-        <package android:name="nextapp.fx" /> <!-- FX File Explorer -->
+        <package android:name="com.speedsoftware.rootexplorer" />
+        <package android:name="com.ghisler.android.TotalCommander" />
+        <package android:name="com.ghisler.android.TotalCommander.plugins" />
+        <package android:name="com.mixplorer.silver" />
+        <package android:name="com.mixplorer" />
+        <package android:name="bin.mt.plus" />
+        <package android:name="com.rs.explorer.filemanager" />
+        <package android:name="com.ghostsq.commander" />
+        <package android:name="nextapp.fx" />
         <package android:name="nextapp.fx.rk" />
         <package android:name="nextapp.fx.plus" />
 
         <!-- Archive/file tools often used as managers -->
-        <package android:name="ru.zdevs.zarchiver" /> <!-- ZArchiver -->
-        <package android:name="com.rarlab.rar" /> <!-- RAR by RARLAB -->
+        <package android:name="ru.zdevs.zarchiver" />
+        <package android:name="com.rarlab.rar" />
 
         <!-- OEM / System file managers -->
-        <package android:name="com.mi.android.globalFileexplorer" /> <!-- Xiaomi File Explorer (Global) -->
-        <package android:name="com.android.fileexplorer" /> <!-- Xiaomi File Explorer (China/MIUI) -->
-        <package android:name="com.sec.android.app.myfiles" /> <!-- Samsung My Files -->
-        <package android:name="com.google.android.documentsui" /> <!-- AOSP Files -->
-        <package android:name="com.asus.filemanager" /> <!-- ASUS File Manager -->
-        <package android:name="com.huawei.hidisk" /> <!-- Huawei File Manager -->
+        <package android:name="com.mi.android.globalFileexplorer" />
+        <package android:name="com.android.fileexplorer" />
+        <package android:name="com.sec.android.app.myfiles" />
+        <package android:name="com.google.android.documentsui" />
+        <package android:name="com.asus.filemanager" />
+        <package android:name="com.huawei.hidisk" />
 
         <!-- Legacy but still used -->
-        <package android:name="com.estrongs.android.pop" /> <!-- ES File Explorer (legacy) -->
-        <package android:name="org.openintents.filemanager" /> <!-- OI File Manager -->
+        <package android:name="com.estrongs.android.pop" />
+        <package android:name="org.openintents.filemanager" />
     </queries>
 
     <application
         android:allowBackup="true"
-        android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:directBootAware="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -76,15 +76,10 @@
         android:theme="@style/Theme.FileManagerRedirect">
 
         <!-- ===== LSPosed / Xposed module metadata (REQUIRED) ===== -->
-        <meta-data
-            android:name="xposedmodule"
-            android:value="true" />
-        <meta-data
-            android:name="xposeddescription"
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription"
             android:value="Redirects Android file picker intents to your chosen file manager." />
-        <meta-data
-            android:name="xposedminversion"
-            android:value="93" />
+        <meta-data android:name="xposedminversion" android:value="93" />
 
         <!-- Launcher -->
         <activity
@@ -100,8 +95,8 @@
         <!-- Settings -->
         <activity
             android:name=".SettingsActivity"
-            android:label="@string/title_activity_settings"
-            android:exported="false" />
+            android:exported="false"
+            android:label="@string/title_activity_settings" />
 
         <!-- Redirect shim that forwards to the chosen file manager -->
         <activity
@@ -111,7 +106,6 @@
             android:launchMode="singleTop"
             android:theme="@style/Theme.FileManagerRedirect.NoActionBar">
             <intent-filter>
-                <!-- cover common picker actions -->
                 <action android:name="android.intent.action.OPEN_DOCUMENT" />
                 <action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
                 <action android:name="android.intent.action.CREATE_DOCUMENT" />

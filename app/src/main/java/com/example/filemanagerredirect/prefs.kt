@@ -20,6 +20,9 @@ object Prefs {
     const val KEY_FALLBACK_SAF = "fallback_saf"            // allow falling back to system picker
     const val KEY_FALLBACK_MANAGERS = "fallback_managers"  // optional multiselect of alternates
 
+    // For debugging/telemetry in hooks (xposedentry.kt uses this)
+    const val KEY_RESOLVED_TARGET = "resolved_target"
+
     /**
      * If older builds saved an empty string to represent "auto",
      * normalize it to PKG_AUTO.
@@ -40,4 +43,5 @@ object Keys {
     const val KEY_STEALTH = Prefs.KEY_STEALTH
     const val KEY_FALLBACK_SAF = Prefs.KEY_FALLBACK_SAF
     const val KEY_FALLBACK_MANAGERS = Prefs.KEY_FALLBACK_MANAGERS
+    const val KEY_RESOLVED_TARGET = Prefs.KEY_RESOLVED_TARGET
 }

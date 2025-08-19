@@ -11,24 +11,22 @@ android {
         applicationId "com.example.filemanagerredirect"
         minSdk 24
         targetSdk 34
+
         versionCode 1
         versionName "1.0"
-        // testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner" // optional
     }
 
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // If you ever enable minify true, add a keep rule for the hook class:
-            // -keep class com.example.filemanagerredirect.FileManagerRedirectHook { *; }
         }
         debug {
-            // default is fine
+            // keep default
         }
     }
 
-    // Java/Kotlin toolchains (match CI)
+    // Java/Kotlin toolchain
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -45,30 +43,23 @@ android {
     lint {
         abortOnError false
     }
-
-    // Uncomment only if you hit META-INF duplicate warnings
-    // packaging {
-    //     resources {
-    //         excludes += ['META-INF/LICENSE*', 'META-INF/AL2.0', 'META-INF/LGPL2.1']
-    //     }
-    // }
 }
 
 dependencies {
-    // Xposed / LSPosed API (compileOnly so it is NOT packaged into the APK)
-    compileOnly "de.robv.android.xposed:api:93"
-
-    // AndroidX + Material
+    // AndroidX core + UI
     implementation "androidx.core:core-ktx:1.13.1"
     implementation "androidx.appcompat:appcompat:1.7.0"
     implementation "androidx.activity:activity-ktx:1.9.2"
     implementation "androidx.fragment:fragment-ktx:1.8.2"
     implementation "androidx.preference:preference-ktx:1.2.1"
+
+    // Material 3
     implementation "com.google.android.material:material:1.12.0"
 
-    // Kotlin stdlib (explicit OK)
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.24"
+    // Xposed / LSPosed APIs (compileOnly so they are not bundled)
+    compileOnly "de.robv.android.xposed:api:82"                   // <- FIXED (was 93)
+    compileOnly "org.lsposed.hiddenapibypass:hiddenapibypass:4.3"
 
-    // Remove unless you actually use it:
-    // compileOnly "org.lsposed.hiddenapibypass:hiddenapibypass:4.3"
+    // Kotlin stdlib
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.24"
 }

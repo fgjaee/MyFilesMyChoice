@@ -1,111 +1,146 @@
 package com.example.filemanagerredirect
 
+import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.os.IBinder
+import android.util.Log
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
-/**
- * LSPosed/Xposed entry point. Only hooks the system framework ("android") process.
- * Reads user prefs via XSharedPreferences and forces file-picker intents to a target package.
- */
 class XposedEntry : IXposedHookLoadPackage {
 
+    private val TAG = "FMR/Xposed"
+
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
+        // Only hook the framework process
         if (lpparam.packageName != "android") return
+        log("Loaded in system server; installing hooks…")
 
+        // ---- ActivityTaskManagerService (various startActivity* entry points)
+        hookAll(
+            className = "com.android.server.wm.ActivityTaskManagerService",
+            loader = lpparam.classLoader,
+            method = "startActivity",
+        ) { param -> interceptFromArgs(param) }
+
+        hookAll(
+            className = "com.android.server.wm.ActivityTaskManagerService",
+            loader = lpparam.classLoader,
+            method = "startActivityAsUser",
+        ) { param -> interceptFromArgs(param) }
+
+        // ---- ActivityStarter (common launch path on A12–A14)
+        hookAll(
+            className = "com.android.server.wm.ActivityStarter",
+            loader = lpparam.classLoader,
+            method = "executeRequest",
+        ) { param ->
+            val req = param.args.getOrNull(0)
+            val intent = req?.let { XposedHelpers.getObjectField(it, "intent") as? Intent }
+            interceptIntent(intent)
+        }
+
+        hookAll(
+            className = "com.android.server.wm.ActivityStarter",
+            loader = lpparam.classLoader,
+            method = "startActivityMayWait",
+        ) { param -> interceptFromArgs(param) }
+
+        hookAll(
+            className = "com.android.server.wm.ActivityStarter",
+            loader = lpparam.classLoader,
+            method = "startActivityUnchecked",
+        ) { param -> interceptFromArgs(param) }
+
+        // ---- ChooserActivity: if a chooser still appears, rewrite its target
         try {
-            // Try the common ActivityTaskManagerService.startActivityAsUser signature.
-            hookStartActivityAsUser(lpparam)
-            XposedBridge.log("FilePickerReDirekt: hook installed in system_server")
-        } catch (t: Throwable) {
-            XposedBridge.log("FilePickerReDirekt: hook failed: ${t.message}")
-        }
-    }
-
-    private fun hookStartActivityAsUser(lpparam: XC_LoadPackage.LoadPackageParam) {
-        XposedHelpers.findAndHookMethod(
-            "com.android.server.wm.ActivityTaskManagerService",
-            lpparam.classLoader,
-            "startActivityAsUser",
-            Class.forName("android.app.IApplicationThread"),
-            String::class.java,
-            Intent::class.java,
-            String::class.java,
-            IBinder::class.java,
-            String::class.java,
-            Int::class.javaPrimitiveType,    // requestCode
-            Int::class.javaPrimitiveType,    // startFlags
-            Class.forName("android.app.ProfilerInfo"),
-            Bundle::class.java,
-            Int::class.javaPrimitiveType,    // userId
-            object : XC_MethodHook() {
+            val cls = XposedHelpers.findClass("com.android.internal.app.ChooserActivity", lpparam.classLoader)
+            XposedBridge.hookAllMethods(cls, "onCreate", object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
-                    val intent = param.args[2] as? Intent ?: return
-                    val action = intent.action ?: return
+                    // Base intent lives in mResolverIntent or mIntent on various versions; try both.
+                    val base = runCatching {
+                        XposedHelpers.getObjectField(param.thisObject, "mResolverIntent") as? Intent
+                    }.getOrNull() ?: runCatching {
+                        XposedHelpers.getObjectField(param.thisObject, "mIntent") as? Intent
+                    }.getOrNull()
 
-                    val isPicker = action == Intent.ACTION_GET_CONTENT ||
-                            action == Intent.ACTION_OPEN_DOCUMENT ||
-                            action == Intent.ACTION_OPEN_DOCUMENT_TREE ||
-                            action == Intent.ACTION_CREATE_DOCUMENT ||
-                            action == Intent.ACTION_PICK
-                    if (!isPicker) return
-
-                    // Don’t redirect if already targeted or chooser
-                    if (intent.component?.className == "com.android.internal.app.ChooserActivity") return
-
-                    val target = readTargetPackageFromPrefs() ?: return
-                    if (intent.`package` == target) return
-
-                    // Set the explicit package; if not installed, system will ignore and continue resolution
-                    intent.setPackage(target)
-                    XposedBridge.log("FilePickerReDirekt: redirected $action to $target")
+                    interceptIntent(base)
                 }
-            }
-        )
-    }
-
-    /**
-     * Read user settings from the app's SharedPreferences using XSharedPreferences.
-     * Requires the prefs XML to be readable by system_server (see step 3).
-     */
-    private fun readTargetPackageFromPrefs(): String? {
-        val sp = XSharedPreferences("com.example.filemanagerredirect", Prefs.PREFS_NAME)
-        // On some ROMs you need this; harmless otherwise:
-        sp.makeWorldReadable()
-
-        val enabled = sp.getBoolean(Prefs.KEY_ENABLED, true)
-        if (!enabled) return null
-
-        val selected = sp.getString(Prefs.KEY_PRIMARY_MANAGER, "auto") ?: "auto"
-
-        // If the app wrote a resolved package for AUTO, prefer it.
-        val resolved = sp.getString(Prefs.KEY_RESOLVED_TARGET, null)
-
-        return when {
-            selected == "auto" && !resolved.isNullOrBlank() -> resolved
-            selected == "auto" -> DEFAULT_CANDIDATES.firstOrNull() ?: "com.android.documentsui"
-            else -> selected
+            })
+            log("Hooked ChooserActivity#onCreate ✓")
+        } catch (t: Throwable) {
+            log("Hook ChooserActivity failed: ${t.message}")
         }
     }
 
-    companion object {
-        // Conservative ordered defaults (if the app hasn’t pre-resolved AUTO).
-        private val DEFAULT_CANDIDATES = listOf(
-            "com.mixplorer",
-            "com.mixplorer.silver",
-            "bin.mt.plus",
-            "pl.solidexplorer2",
-            "nextapp.fx",
-            "com.speedsoftware.rootexplorer",
-            "com.lonelycatgames.Xplore",
-            "com.google.android.apps.nbu.files",
-            "com.android.documentsui"
-        )
+    // --- Interception plumbing ---
+
+    private fun interceptFromArgs(param: XC_MethodHook.MethodHookParam) {
+        // Walk all args and grab the first Intent (method overloads differ by ROM)
+        val intent = param.args.firstOrNull { it is Intent } as? Intent
+        interceptIntent(intent)
+    }
+
+    private fun interceptIntent(intent: Intent?) {
+        if (intent == null) return
+        val action = intent.action ?: return
+
+        // Only touch common file picker actions
+        val isPicker = action == Intent.ACTION_GET_CONTENT ||
+                action == Intent.ACTION_OPEN_DOCUMENT ||
+                action == Intent.ACTION_OPEN_DOCUMENT_TREE ||
+                action == Intent.ACTION_CREATE_DOCUMENT
+        if (!isPicker) return
+
+        // Avoid loops/false positives
+        if (intent.component?.className == "com.android.internal.app.ChooserActivity") return
+
+        // If an app hardcodes DocumentsUI, remove it so our package retarget works
+        val compPkg = intent.component?.packageName
+        if (compPkg == "com.android.documentsui" || compPkg == "com.google.android.documentsui") {
+            intent.component = null
+        }
+
+        val target = runCatching { FileManagerRedirectHook.resolveTargetPackage(systemContext()) }.getOrNull()
+        if (target.isNullOrEmpty()) return
+
+        if (intent.`package` == target) return // already targeted
+        intent.`package` = target
+
+        log("Redirected $action → $target")
+    }
+
+    private fun systemContext(): Context {
+        val app = XposedHelpers.callStaticMethod(
+            Class.forName("android.app.ActivityThread"),
+            "currentApplication"
+        ) as? Application
+        return app ?: throw IllegalStateException("No system context")
+    }
+
+    private fun hookAll(
+        className: String,
+        loader: ClassLoader,
+        method: String,
+        before: (XC_MethodHook.MethodHookParam) -> Unit
+    ) {
+        try {
+            val cls = XposedHelpers.findClass(className, loader)
+            XposedBridge.hookAllMethods(cls, method, object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) = before(param)
+            })
+            log("Hooked $className#$method ✓")
+        } catch (t: Throwable) {
+            log("Hook $className#$method failed: ${t.message}")
+        }
+    }
+
+    private fun log(msg: String) {
+        XposedBridge.log("FMR/Xposed $msg")
+        Log.d("FMR/Xposed", msg)
     }
 }

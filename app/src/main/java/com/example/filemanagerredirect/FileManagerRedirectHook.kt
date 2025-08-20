@@ -8,9 +8,11 @@ import android.os.Build
 import android.util.Log
 
 /**
- * Central helper for deciding which file manager package to use.
+ * Decides which file manager package should be used.
  * - Reads user prefs (enabled flag, primary choice).
  * - If set to "auto", picks the best installed manager from our known list.
+ *
+ * NOTE: This class does NOT perform any Xposed hooking. The hook lives in xposedentry.kt.
  */
 object FileManagerRedirectHook {
 
@@ -34,9 +36,9 @@ object FileManagerRedirectHook {
             return null
         }
 
-        // Normalize legacy/blank values to Prefs.PKG_AUTO
-        val rawSelected = sp.getString(Prefs.KEY_PRIMARY_MANAGER, Prefs.PKG_AUTO)
-        val selected = Prefs.normalizeSelected(rawSelected)
+        // Normalize empty ("") from old builds to "auto"
+        val selectedRaw = sp.getString(Prefs.KEY_PRIMARY_MANAGER, Prefs.PKG_AUTO)
+        val selected = Prefs.normalizeSelected(selectedRaw)
 
         if (selected != Prefs.PKG_AUTO) {
             Log.d(TAG, "Using user-selected manager: $selected")
@@ -51,11 +53,7 @@ object FileManagerRedirectHook {
         }
 
         val installed = filterInstalled(ctx.packageManager, known)
-        val best = chooseBest(installed) ?: run {
-            Log.d(TAG, "No preferred manager installed; falling back to system picker: $FALLBACK_SYSTEM")
-            FALLBACK_SYSTEM
-        }
-
+        val best = chooseBest(installed) ?: FALLBACK_SYSTEM
         Log.d(TAG, "Auto-selected manager: $best (installed=${installed.size})")
         return best
     }
@@ -65,7 +63,9 @@ object FileManagerRedirectHook {
      */
     private fun filterInstalled(pm: PackageManager, candidates: List<String>): List<String> {
         if (candidates.isEmpty()) return emptyList()
-        return candidates.filter { pkg -> pm.getPackageInfoCompat(pkg) != null }
+        return candidates.filter { pkg ->
+            pm.getPackageInfoCompat(pkg) != null
+        }
     }
 
     /**
@@ -75,7 +75,7 @@ object FileManagerRedirectHook {
         if (installed.isEmpty()) return null
 
         val priority = listOf(
-            // Popular power users / root-capable first
+            // Power-user / root-capable
             "com.mixplorer",
             "com.mixplorer.silver",
             "bin.mt.plus",
@@ -84,7 +84,7 @@ object FileManagerRedirectHook {
             "nextapp.fx",
             "com.speedsoftware.rootexplorer",
             "com.lonelycatgames.Xplore",
-            // Stock / Google file apps next
+            // Stock / Google
             "com.google.android.apps.nbu.files",
             "com.android.documentsui",
         )
@@ -106,7 +106,6 @@ private fun PackageManager.getPackageInfoCompat(
 ): PackageInfo? {
     return try {
         if (Build.VERSION.SDK_INT >= 33) {
-            // Tiramisu+ API
             getPackageInfo(
                 VersionedPackage(packageName, 0),
                 PackageManager.PackageInfoFlags.of(flags.toLong())

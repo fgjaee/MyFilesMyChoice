@@ -2,14 +2,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ===== Permissions (optional, kept as you had) ===== -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+    <!-- ===== Optional permissions (only if you truly need them) ===== -->
+    <!-- QUERY_ALL_PACKAGES is powerful; keep only if your app really needs broad visibility -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+
+    <!-- Legacy storage flags; most modules don't need these.
+         Keep only if you rely on legacy external storage APIs. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
 
     <!-- ===== Visibility queries (Android 11+) ===== -->
@@ -47,11 +55,11 @@
         <package android:name="nextapp.fx.rk" />
         <package android:name="nextapp.fx.plus" />
 
-        <!-- Archive/file tools often used as managers -->
+        <!-- Archive/file tools -->
         <package android:name="ru.zdevs.zarchiver" />
         <package android:name="com.rarlab.rar" />
 
-        <!-- OEM / System file managers -->
+        <!-- OEM / System -->
         <package android:name="com.mi.android.globalFileexplorer" />
         <package android:name="com.android.fileexplorer" />
         <package android:name="com.sec.android.app.myfiles" />
@@ -59,7 +67,7 @@
         <package android:name="com.asus.filemanager" />
         <package android:name="com.huawei.hidisk" />
 
-        <!-- Legacy but still used -->
+        <!-- Legacy -->
         <package android:name="com.estrongs.android.pop" />
         <package android:name="org.openintents.filemanager" />
     </queries>
@@ -81,11 +89,12 @@
         <meta-data
             android:name="xposeddescription"
             android:value="Redirects Android file picker intents to your chosen file manager." />
+        <!-- 82 is the classic Xposed API level. Use the version your module targets; 93+ is fine too. -->
         <meta-data
             android:name="xposedminversion"
-            android:value="93" />
+            android:value="82" />
 
-        <!-- Launcher -->
+        <!-- Launcher (optional UI) -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -96,13 +105,13 @@
             </intent-filter>
         </activity>
 
-        <!-- Settings -->
+        <!-- Settings (if used) -->
         <activity
             android:name=".SettingsActivity"
             android:label="@string/title_activity_settings"
             android:exported="false" />
 
-        <!-- Redirect shim that forwards to the chosen file manager -->
+        <!-- Optional: explicit redirect Activity if you expose one to be used as a chooser target -->
         <activity
             android:name=".RedirectActivity"
             android:exported="true"

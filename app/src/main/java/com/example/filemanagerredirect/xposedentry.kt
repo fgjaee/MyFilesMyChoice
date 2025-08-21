@@ -1,93 +1,94 @@
+// app/src/main/java/com/example/filemanagerredirect/XposedEntry.kt
 package com.example.filemanagerredirect
 
+import android.app.IApplicationThread
+import android.app.ProfilerInfo
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
+import android.os.Bundle
 import android.os.Process
-import android.util.Log
+import android.text.TextUtils
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
-import java.lang.reflect.Method
 
 /**
- * System-framework-only hook.
- * Hooks ActivityTaskManagerService.startActivityAsUser in system_server ("android" package).
+ * LSPosed entry: we hook system framework ("android") and rewrite
+ * file-picking Intents to the chosen file manager.
  */
 class XposedEntry : IXposedHookLoadPackage {
 
-    companion object {
-        private const val TAG = "XposedEntry"
-        private const val MODULE_PKG = "com.example.filemanagerredirect" // must match your applicationId
-    }
-
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
-        // Only hook the system framework process
+        // We only hook the system framework process.
         if (lpparam.packageName != "android") return
 
         try {
-            hookATMS(lpparam.classLoader)
-            Log.i(TAG, "Hook installed in system_server")
+            hookStartActivity(lpparam)
+            XposedBridge.log("XposedEntry: hooked ActivityTaskManagerService.startActivityAsUser")
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to hook ATMS", t)
+            XposedBridge.log("XposedEntry error while hooking: ${t.stackTraceToString()}")
         }
     }
 
-    private fun hookATMS(cl: ClassLoader) {
-        val atmsClass = XposedHelpers.findClass(
-            "com.android.server.wm.ActivityTaskManagerService",
-            cl
-        )
+    private fun hookStartActivity(lpparam: XC_LoadPackage.LoadPackageParam) {
+        // Class and method signature valid on Android 10+ (and widely compatible)
+        val cls = "com.android.server.wm.ActivityTaskManagerService"
+        XposedHelpers.findAndHookMethod(
+            cls,
+            lpparam.classLoader,
+            "startActivityAsUser",
+            IApplicationThread::class.java,         // caller
+            String::class.java,                     // callingPackage
+            Intent::class.java,                     // intent
+            String::class.java,                     // resolvedType
+            android.os.IBinder::class.java,         // resultTo
+            String::class.java,                     // resultWho
+            Int::class.javaPrimitiveType,           // requestCode
+            Int::class.javaPrimitiveType,           // startFlags
+            ProfilerInfo::class.java,               // profilerInfo
+            Bundle::class.java,                     // bOptions
+            Int::class.javaPrimitiveType,           // userId
+            object : XC_MethodHook() {
+                override fun beforeHookedMethod(param: MethodHookParam) {
+                    try {
+                        val intent = param.args[2] as? Intent ?: return
+                        val userId = (param.args[10] as? Int) ?: Process.myUserHandle().hashCode()
 
-        var hooked = 0
-        for (m in atmsClass.declaredMethods) {
-            if (m.name != "startActivityAsUser") continue
-            try {
-                XposedBridge.hookMethod(m, object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        // We expect to be in system_server
-                        if (Process.myUid() != Process.SYSTEM_UID) return
+                        // Get a Context safely inside system_server
+                        val sysContext = getSystemContext(param.thisObject) ?: return
+                        val targetPkg = FileManagerRedirectHook.resolveTargetPackage(sysContext) ?: return
+                        if (targetPkg.isBlank()) return
 
-                        val intent = param.args.firstOrNull { it is Intent } as? Intent ?: return
-                        val action = intent.action ?: return
-
-                        if (!isPickerAction(action)) return
-                        if (isChooser(intent)) return // avoid loops
-                        if (intent.component != null) return // respect explicit component
-
-                        val moduleCtx = obtainModuleContext() ?: run {
-                            Log.w(TAG, "No module context available; skip redirect")
+                        // Handle ACTION_CHOOSER specially (Gmail often wraps pickers in a chooser)
+                        if (Intent.ACTION_CHOOSER == intent.action) {
+                            val inner = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+                            if (inner != null && shouldRedirect(inner, targetPkg)) {
+                                redirectIntent(inner, targetPkg)
+                                // Put the modified inner intent back
+                                intent.putExtra(Intent.EXTRA_INTENT, inner)
+                                XposedBridge.log("XposedEntry: redirected CHOOSER inner -> $targetPkg")
+                            }
                             return
                         }
 
-                        val target = try {
-                            FileManagerRedirectHook.resolveTargetPackage(moduleCtx)
-                        } catch (t: Throwable) {
-                            Log.e(TAG, "resolveTargetPackage failed", t)
-                            null
-                        } ?: return
-
-                        if (intent.`package` == target) return
-
-                        intent.`package` = target
-                        Log.d(TAG, "Redirected $action to $target (callerUid=${Binder.getCallingUid()})")
+                        // Normal picker / explicit system picker
+                        if (shouldRedirect(intent, targetPkg)) {
+                            redirectIntent(intent, targetPkg)
+                            XposedBridge.log("XposedEntry: redirected ${intent.action} -> $targetPkg (uid=${Binder.getCallingUid()}, userId=$userId)")
+                        }
+                    } catch (t: Throwable) {
+                        XposedBridge.log("XposedEntry redirect error: ${t.stackTraceToString()}")
                     }
-                })
-                hooked++
-            } catch (t: Throwable) {
-                Log.w(TAG, "Hook failed for overload: $m", t)
+                }
             }
-        }
-
-        if (hooked == 0) {
-            Log.e(TAG, "No startActivityAsUser overloads were hooked – ROM may differ")
-        } else {
-            Log.i(TAG, "Hooked $hooked startActivityAsUser overload(s)")
-        }
+        )
     }
 
+    /** True if this is one of the SAF / picker actions we care about. */
     private fun isPickerAction(action: String): Boolean {
         return action == Intent.ACTION_GET_CONTENT ||
                action == Intent.ACTION_OPEN_DOCUMENT ||
@@ -96,35 +97,59 @@ class XposedEntry : IXposedHookLoadPackage {
                action == Intent.ACTION_PICK
     }
 
-    private fun isChooser(intent: Intent): Boolean {
-        val comp = intent.component ?: return false
-        return comp.className == "com.android.internal.app.ChooserActivity"
+    /**
+     * Decide whether to redirect this intent:
+     * - Allow plain picker actions.
+     * - Allow explicit system picker components (com.android.documentsui.*).
+     * - Skip if already targeted at the chosen manager (avoid loops).
+     * - Otherwise, if explicit component is some *other* package, respect it.
+     */
+    private fun shouldRedirect(intent: Intent, target: String): Boolean {
+        // Already going to the chosen package? do not touch.
+        if (intent.`package` == target) return false
+
+        val action = intent.action ?: return false
+
+        // Chooser is handled earlier by rewriting EXTRA_INTENT.
+        if (action == Intent.ACTION_CHOOSER) return false
+
+        val comp: ComponentName? = intent.component
+        if (comp != null) {
+            // Allow replacing explicit system picker
+            if (comp.packageName.startsWith("com.android.documentsui")) {
+                return true
+            }
+            // Respect other explicit components
+            return false
+        }
+
+        // Plain implicit picker actions
+        return isPickerAction(action)
+    }
+
+    /** Apply package redirection to the intent, preserving other fields. */
+    private fun redirectIntent(intent: Intent, target: String) {
+        // Clear component so the package manager can resolve within the chosen package
+        intent.component = null
+        // Direct resolution to our target file manager
+        intent.`package` = target
+        // For GET_CONTENT, many file managers rely on CATEGORY_OPENABLE
+        if (intent.action == Intent.ACTION_GET_CONTENT) {
+            if (!intent.hasCategory(Intent.CATEGORY_OPENABLE)) {
+                intent.addCategory(Intent.CATEGORY_OPENABLE)
+            }
+        }
     }
 
     /**
-     * Build a module Context inside system_server and move it to device-protected storage.
+     * Obtain a working Context inside system_server.
+     * We avoid any constants that aren’t on older SDKs.
      */
-    private fun obtainModuleContext(): Context? {
+    private fun getSystemContext(activityTaskMgr: Any): Context? {
         return try {
-            val activityThreadClass = XposedHelpers.findClass("android.app.ActivityThread", null)
-            val at = XposedHelpers.callStaticMethod(activityThreadClass, "currentActivityThread")
-            val sysCtx = XposedHelpers.callMethod(at, "getSystemContext") as Context
-
-            // 1) Create package context for our module (ignore security so resources/prefs are reachable)
-            val base = sysCtx.createPackageContext(
-                MODULE_PKG,
-                Context.CONTEXT_IGNORE_SECURITY
-            )
-
-            // 2) Switch to device-protected storage (available API 24+; your minSdk is 24)
-            // If anything goes wrong, fall back to base.
-            try {
-                base.createDeviceProtectedStorageContext()
-            } catch (_: Throwable) {
-                base
-            }
-        } catch (t: Throwable) {
-            Log.e(TAG, "obtainModuleContext failed", t)
+            // ActivityTaskManagerService has a mContext field
+            XposedHelpers.getObjectField(activityTaskMgr, "mContext") as? Context
+        } catch (_: Throwable) {
             null
         }
     }

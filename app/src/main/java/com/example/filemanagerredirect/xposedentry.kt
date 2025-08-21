@@ -20,11 +20,11 @@ class XposedEntry : IXposedHookLoadPackage {
 
     companion object {
         private const val TAG = "XposedEntry"
-        private const val MODULE_PKG = "com.example.filemanagerredirect"
+        private const val MODULE_PKG = "com.example.filemanagerredirect" // must match your applicationId
     }
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
-        // We only act inside the android (system_server) process
+        // Only hook the system framework process
         if (lpparam.packageName != "android") return
 
         try {
@@ -41,16 +41,13 @@ class XposedEntry : IXposedHookLoadPackage {
             cl
         )
 
-        // Signatures vary across Android versions. We hook ALL overloads named startActivityAsUser.
-        val methods: Array<Method> = atmsClass.declaredMethods
-        var count = 0
-        for (m in methods) {
+        var hooked = 0
+        for (m in atmsClass.declaredMethods) {
             if (m.name != "startActivityAsUser") continue
             try {
                 XposedBridge.hookMethod(m, object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
-                        // Only user/system processes should be launching activities here;
-                        // but don't do anything during system boot's very early phase.
+                        // We expect to be in system_server
                         if (Process.myUid() != Process.SYSTEM_UID) return
 
                         val intent = param.args.firstOrNull { it is Intent } as? Intent ?: return
@@ -58,10 +55,8 @@ class XposedEntry : IXposedHookLoadPackage {
 
                         if (!isPickerAction(action)) return
                         if (isChooser(intent)) return // avoid loops
-                        // If caller already hard-pins a package/component to a specific app, respect it.
-                        if (intent.component != null) return
+                        if (intent.component != null) return // respect explicit component
 
-                        // Read module prefs/resources from module context (not "android" context)
                         val moduleCtx = obtainModuleContext() ?: run {
                             Log.w(TAG, "No module context available; skip redirect")
                             return
@@ -74,25 +69,22 @@ class XposedEntry : IXposedHookLoadPackage {
                             null
                         } ?: return
 
-                        // If already going to target, do nothing
                         if (intent.`package` == target) return
 
-                        // Set explicit package to our chosen manager
                         intent.`package` = target
                         Log.d(TAG, "Redirected $action to $target (callerUid=${Binder.getCallingUid()})")
                     }
                 })
-                count++
+                hooked++
             } catch (t: Throwable) {
-                // Keep trying other overloads; many ROMs have multiple
                 Log.w(TAG, "Hook failed for overload: $m", t)
             }
         }
 
-        if (count == 0) {
+        if (hooked == 0) {
             Log.e(TAG, "No startActivityAsUser overloads were hooked – ROM may differ")
         } else {
-            Log.i(TAG, "Hooked $count startActivityAsUser overload(s)")
+            Log.i(TAG, "Hooked $hooked startActivityAsUser overload(s)")
         }
     }
 
@@ -106,28 +98,31 @@ class XposedEntry : IXposedHookLoadPackage {
 
     private fun isChooser(intent: Intent): Boolean {
         val comp = intent.component ?: return false
-        // Defensive: skip Android's chooser
         return comp.className == "com.android.internal.app.ChooserActivity"
     }
 
     /**
-     * Create a Context for our module APK inside system_server so we can read:
-     *  - SharedPreferences in device-protected storage
-     *  - Resources (arrays etc.)
+     * Build a module Context inside system_server and move it to device-protected storage.
      */
     private fun obtainModuleContext(): Context? {
         return try {
-            val activityThreadClass = XposedHelpers.findClass(
-                "android.app.ActivityThread",
-                null
-            )
+            val activityThreadClass = XposedHelpers.findClass("android.app.ActivityThread", null)
             val at = XposedHelpers.callStaticMethod(activityThreadClass, "currentActivityThread")
             val sysCtx = XposedHelpers.callMethod(at, "getSystemContext") as Context
 
-            // Use device-protected storage so prefs are available before user unlock
-            val flags = Context.CONTEXT_IGNORE_SECURITY or Context.CONTEXT_DEVICE_PROTECTED_STORAGE
-            val moduleCtx = sysCtx.createPackageContext(MODULE_PKG, flags)
-            moduleCtx
+            // 1) Create package context for our module (ignore security so resources/prefs are reachable)
+            val base = sysCtx.createPackageContext(
+                MODULE_PKG,
+                Context.CONTEXT_IGNORE_SECURITY
+            )
+
+            // 2) Switch to device-protected storage (available API 24+; your minSdk is 24)
+            // If anything goes wrong, fall back to base.
+            try {
+                base.createDeviceProtectedStorageContext()
+            } catch (_: Throwable) {
+                base
+            }
         } catch (t: Throwable) {
             Log.e(TAG, "obtainModuleContext failed", t)
             null

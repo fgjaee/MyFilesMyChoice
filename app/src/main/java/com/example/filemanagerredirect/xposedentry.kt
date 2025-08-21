@@ -1,78 +1,136 @@
 package com.example.filemanagerredirect
 
-import android.app.AndroidAppHelper
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.os.Binder
+import android.os.Process
 import android.util.Log
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
+import java.lang.reflect.Method
 
 /**
- * LSPosed entrypoint.
- * Hooks PackageManager/Intent resolution to redirect file picker calls.
+ * System-framework-only hook.
+ * Hooks ActivityTaskManagerService.startActivityAsUser in system_server ("android" package).
  */
 class XposedEntry : IXposedHookLoadPackage {
 
     companion object {
         private const val TAG = "XposedEntry"
+        private const val MODULE_PKG = "com.example.filemanagerredirect"
     }
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
-        // Don’t hook ourselves
-        if (lpparam.packageName == "com.example.filemanagerredirect") return
+        // We only act inside the android (system_server) process
+        if (lpparam.packageName != "android") return
 
         try {
-            val ctx = AndroidAppHelper.currentApplication()?.applicationContext ?: return
-            val targetPkg = FileManagerRedirectHook.resolveTargetPackage(ctx) ?: return
-
-            // Hook PackageManager.resolveActivity() to intercept file picker intents
-            val pmClass = XposedHelpers.findClass(
-                "android.app.ApplicationPackageManager",
-                lpparam.classLoader
-            )
-
-            XposedHelpers.findAndHookMethod(
-                pmClass,
-                "resolveActivity",
-                Intent::class.java,
-                Int::class.javaPrimitiveType,
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        val origIntent = param.args[0] as? Intent ?: return
-                        if (isFilePickerIntent(origIntent)) {
-                            Log.d(TAG, "Redirecting file picker to $targetPkg")
-                            origIntent.setPackage(targetPkg)
-                            param.args[0] = origIntent
-                        }
-                    }
-                }
-            )
-
-            XposedBridge.log("$TAG: Hook initialized for ${lpparam.packageName}, redirect → $targetPkg")
+            hookATMS(lpparam.classLoader)
+            Log.i(TAG, "Hook installed in system_server")
         } catch (t: Throwable) {
-            XposedBridge.log("$TAG error: ${t.message}")
+            Log.e(TAG, "Failed to hook ATMS", t)
         }
     }
 
-    /**
-     * Detects whether an Intent looks like a file picker.
-     */
-    private fun isFilePickerIntent(intent: Intent): Boolean {
-        val act = intent.action ?: return false
-        val type = intent.type ?: ""
+    private fun hookATMS(cl: ClassLoader) {
+        val atmsClass = XposedHelpers.findClass(
+            "com.android.server.wm.ActivityTaskManagerService",
+            cl
+        )
 
-        // Document/file intents
-        if (act == Intent.ACTION_GET_CONTENT || act == Intent.ACTION_OPEN_DOCUMENT) {
-            return true
+        // Signatures vary across Android versions. We hook ALL overloads named startActivityAsUser.
+        val methods: Array<Method> = atmsClass.declaredMethods
+        var count = 0
+        for (m in methods) {
+            if (m.name != "startActivityAsUser") continue
+            try {
+                XposedBridge.hookMethod(m, object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        // Only user/system processes should be launching activities here;
+                        // but don't do anything during system boot's very early phase.
+                        if (Process.myUid() != Process.SYSTEM_UID) return
+
+                        val intent = param.args.firstOrNull { it is Intent } as? Intent ?: return
+                        val action = intent.action ?: return
+
+                        if (!isPickerAction(action)) return
+                        if (isChooser(intent)) return // avoid loops
+                        // If caller already hard-pins a package/component to a specific app, respect it.
+                        if (intent.component != null) return
+
+                        // Read module prefs/resources from module context (not "android" context)
+                        val moduleCtx = obtainModuleContext() ?: run {
+                            Log.w(TAG, "No module context available; skip redirect")
+                            return
+                        }
+
+                        val target = try {
+                            FileManagerRedirectHook.resolveTargetPackage(moduleCtx)
+                        } catch (t: Throwable) {
+                            Log.e(TAG, "resolveTargetPackage failed", t)
+                            null
+                        } ?: return
+
+                        // If already going to target, do nothing
+                        if (intent.`package` == target) return
+
+                        // Set explicit package to our chosen manager
+                        intent.`package` = target
+                        Log.d(TAG, "Redirected $action to $target (callerUid=${Binder.getCallingUid()})")
+                    }
+                })
+                count++
+            } catch (t: Throwable) {
+                // Keep trying other overloads; many ROMs have multiple
+                Log.w(TAG, "Hook failed for overload: $m", t)
+            }
         }
-        // Mime filters
-        if (type.startsWith("image/") || type.startsWith("video/") || type.startsWith("audio/") || type == "*/*") {
-            return true
+
+        if (count == 0) {
+            Log.e(TAG, "No startActivityAsUser overloads were hooked – ROM may differ")
+        } else {
+            Log.i(TAG, "Hooked $count startActivityAsUser overload(s)")
         }
-        return false
+    }
+
+    private fun isPickerAction(action: String): Boolean {
+        return action == Intent.ACTION_GET_CONTENT ||
+               action == Intent.ACTION_OPEN_DOCUMENT ||
+               action == Intent.ACTION_OPEN_DOCUMENT_TREE ||
+               action == Intent.ACTION_CREATE_DOCUMENT ||
+               action == Intent.ACTION_PICK
+    }
+
+    private fun isChooser(intent: Intent): Boolean {
+        val comp = intent.component ?: return false
+        // Defensive: skip Android's chooser
+        return comp.className == "com.android.internal.app.ChooserActivity"
+    }
+
+    /**
+     * Create a Context for our module APK inside system_server so we can read:
+     *  - SharedPreferences in device-protected storage
+     *  - Resources (arrays etc.)
+     */
+    private fun obtainModuleContext(): Context? {
+        return try {
+            val activityThreadClass = XposedHelpers.findClass(
+                "android.app.ActivityThread",
+                null
+            )
+            val at = XposedHelpers.callStaticMethod(activityThreadClass, "currentActivityThread")
+            val sysCtx = XposedHelpers.callMethod(at, "getSystemContext") as Context
+
+            // Use device-protected storage so prefs are available before user unlock
+            val flags = Context.CONTEXT_IGNORE_SECURITY or Context.CONTEXT_DEVICE_PROTECTED_STORAGE
+            val moduleCtx = sysCtx.createPackageContext(MODULE_PKG, flags)
+            moduleCtx
+        } catch (t: Throwable) {
+            Log.e(TAG, "obtainModuleContext failed", t)
+            null
+        }
     }
 }

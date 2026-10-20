@@ -5,6 +5,9 @@ on:
   push:
     paths:
       - '.github/workflows/keep-latest-build.yml'
+  workflow_run:
+    workflows: ["Build*", "* build", "* Build", "Android*", "kjmod*", "Compile*", "Package*", "Release*", "CI*", "* APK*", "NexGen*", "Produce*"]
+    types: [completed]
 
 permissions:
   contents: write
@@ -16,6 +19,7 @@ concurrency:
 
 jobs:
   publish-and-clean:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -43,7 +47,7 @@ jobs:
 
           while IFS=$'\t' read -r artifact_id artifact_name run_id created_at; do
             lower="${artifact_name,,}"
-            [[ "$lower" =~ (app|apk|build|bundle|module|zip|release|kjmod|safepif|ghostlock) ]] || continue
+            [[ "$lower" =~ (app|apk|build|bundle|module|zip|release|kjmod|safepif|ghostlock|android|nexgen|aireply|achievers|workday|nois|fresh|susaf|aerial|lkm|kernel|plugin|pkg) ]] || continue
             [[ "$lower" =~ (unverified|do.not.flash|inspection.only|lab.only|test|log|report|evidence|diagnostic|smoke|refresh|input|cache|backup) ]] && continue
             [[ -n "$run_id" && "$run_id" != "null" ]] || continue
 
@@ -123,7 +127,7 @@ jobs:
           while IFS=$'\t' read -r artifact_id artifact_name run_id created_at; do
             [[ "$artifact_id" != "$selected_id" ]] || continue
             lower="${artifact_name,,}"
-            [[ "$lower" =~ (app|apk|build|bundle|module|zip|release|kjmod|safepif|ghostlock) ]] || continue
+            [[ "$lower" =~ (app|apk|build|bundle|module|zip|release|kjmod|safepif|ghostlock|android|nexgen|aireply|achievers|workday|nois|fresh|susaf|aerial|lkm|kernel|plugin|pkg) ]] || continue
             [[ "$lower" =~ (unverified|do.not.flash|inspection.only|lab.only|test|log|report|evidence|diagnostic|smoke|refresh|input|cache|backup) ]] && continue
             gh api -X DELETE "repos/$GH_REPO/actions/artifacts/$artifact_id"
             deleted=$((deleted + 1))

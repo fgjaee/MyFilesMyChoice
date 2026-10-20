@@ -2,30 +2,40 @@
 
 **My files. My choice.**
 
-An Android file-picker bridge for choosing files with a preferred file manager.
+An Android LSPosed module with a global DocumentsUI file-picker interceptor and a preferred-manager bridge. This is a **device-testing alpha**, not a verified universal file picker replacement.
 
-## Current status: Android alpha, not a full system-wide replacement
+## Global mode (experimental)
 
-The original FilePickerReDirekt repository has been renamed and revived while preserving its history. This development branch corrects a key flaw: the old picker-process Xposed hook finished the picker before forwarding a valid result to the requesting app.
+1. Install the debug APK.
+2. LSPosed Manager → Modules → MyFilesMyChoice → enable and scope **DocumentsUI** (often `com.google.android.documentsui` or `com.android.documentsui`). Do not scope every installed app.
+3. Restart the DocumentsUI process or reboot.
+4. Open MyFilesMyChoice → **Settings** → choose a manager; enable **System-wide interception (LSPosed)**.
+5. Tap **Test SYSTEM-WIDE DocumentsUI hook**. The configured manager should appear automatically. Select a file; the test must say **PASS: Returned and readable**.
 
-This build offers a standard **ACTION_GET_CONTENT** picker activity. A compatible app can select it as a file picker, it launches a configured file manager, and forwards a returned **content URI** (with read permission flags). If no compatible manager can launch, it falls back to Android's standard **OPEN_DOCUMENT** picker.
+### Fallback
 
-**The legacy LSPosed hook is disabled** until real testing demonstrates reliable results. This build does not force apps to use the custom picker. It does not replace **OPEN_DOCUMENT**, **CREATE_DOCUMENT**, **OPEN_DOCUMENT_TREE**, or the Photo Picker. It also does not yet expose root-only files.
+If you cancel the preferred manager, the original Android DocumentsUI picker stays open. For a full bypass, turn off the global switch in Settings. If no hook is installed or its config cannot be read, Android's normal picker works unchanged.
+
+### What this covers
+
+The hook runs in the **DocumentsUI process** and applies to all requesting apps that actually invoke that picker with `ACTION_GET_CONTENT`. It isn't a separate per-app list and does not require each calling app to be scoped in LSPosed.
+
+The hook deliberately does **not** override `ACTION_OPEN_DOCUMENT`, `ACTION_CREATE_DOCUMENT`, `ACTION_OPEN_DOCUMENT_TREE`, Google's separate Photo Picker, or OEM-specific picker implementations. Those operations have distinct permission/result contracts; covering them will require compatible implementations rather than changing the action string.
+
+### Result handling
+
+Unlike the original FilePickerReDirekt hook, DocumentsUI stays alive. It starts MyFilesMyChoice for result and forwards valid `content://` URIs and read-grant flags to the original caller. When canceled or invalid, DocumentsUI remains available for selecting the file normally.
+
+## Known limitations
+
+- **Not yet proven on a real device** for Android 16/17; request a field test.
+- Requires LSPosed and a compatible root environment for automatic interception.
+- The external manager must return a grantable `content://` result. No `file://` URI conversion is implemented yet.
+- Root-only files are not exposed by this build.
+- Some apps open Android Photo Picker directly or bypass DocumentsUI, and won't be intercepted.
 
 ## Build
 
-Use Android Studio with JDK 17 or run:
+GitHub Actions assembles a debug APK on commits to this branch. Download it from the workflow's **Artifacts**, install as an update, then run the tests listed in [docs/REVIVAL.md](docs/REVIVAL.md).
 
-    gradle :app:assembleDebug
-
-A GitHub Actions workflow builds an APK on pushes. Install the APK and select **Test MyFilesMyChoice bridge** to choose a file and verify whether the returned URI is readable. Compare against **Test Android system picker**.
-
-## Development priorities
-
-1. Verify that real calling applications can successfully upload a selected file.
-2. Validate MIME types, cancellation, multiple selection, URI permissions and fallback.
-3. Add a safe DocumentsProvider for broader SAF integration.
-4. Add optional, user-approved root-file access through a carefully scoped content provider.
-5. Explore caller-side LSPosed interoperability only after end-to-end tests.
-
-See docs/REVIVAL.md for the alpha's scope and outstanding work.
+The Android application ID remains `com.example.filemanagerredirect` so existing app data and selection settings survive upgrading.

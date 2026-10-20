@@ -5,6 +5,8 @@
             <category android:name="android.intent.category.OPENABLE" />
             <data android:mimeType="*/*" />
         </intent>
+        <package android:name="com.google.android.documentsui" />
+        <package android:name="com.android.documentsui" />
         <package android:name="com.mixplorer" />
         <package android:name="com.mixplorer.silver" />
         <package android:name="bin.mt.plus" />
@@ -23,8 +25,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FileManagerRedirect">
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="MyFilesMyChoice preview. Automatic LSPosed hooking is disabled." />
+        <meta-data android:name="xposeddescription"
+            android:value="Optional system-wide DocumentsUI GET_CONTENT interception." />
         <meta-data android:name="xposedminversion" android:value="82" />
+        <provider
+            android:name=".PickerSettingsProvider"
+            android:authorities="com.example.filemanagerredirect.settings"
+            android:exported="true" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

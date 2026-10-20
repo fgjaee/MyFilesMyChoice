@@ -5,10 +5,10 @@ import android.os.Build
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.ListPreference
+import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreferenceCompat
 
-/** Settings shared by the standalone picker bridge and its test screen. */
 class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,9 +22,23 @@ class SettingsActivity : AppCompatActivity() {
             val screen = preferenceManager.createPreferenceScreen(requireContext())
             screen.addPreference(SwitchPreferenceCompat(requireContext()).apply {
                 key = Prefs.KEY_ENABLED
-                title = getString(R.string.enable_redirect)
-                summary = "Use a preferred manager for supported GET_CONTENT requests"
+                title = "Enable MyFilesMyChoice"
+                summary = "Master switch for supported file picking"
                 setDefaultValue(true)
+            })
+            screen.addPreference(SwitchPreferenceCompat(requireContext()).apply {
+                key = Prefs.KEY_GLOBAL_ENABLED
+                title = "System-wide interception (LSPosed)"
+                summary = "EXPERIMENTAL: automatically redirect DocumentsUI GET_CONTENT uploads; " +
+                    "cancel the preferred manager to use the stock picker"
+                setDefaultValue(false)
+            })
+            screen.addPreference(Preference(requireContext()).apply {
+                title = "Required LSPosed scope"
+                summary = "Enable this module for DocumentsUI (Google DocumentsUI or " +
+                    "com.android.documentsui). Restart the picker process or reboot. " +
+                    "No individual app scopes are needed."
+                isSelectable = false
             })
             screen.addPreference(SwitchPreferenceCompat(requireContext()).apply {
                 key = Prefs.KEY_FALLBACK_SAF

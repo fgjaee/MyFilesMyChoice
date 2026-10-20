@@ -1,25 +1,40 @@
-# MyFilesMyChoice — revival checkpoint
+# MyFilesMyChoice — global hook alpha checklist
 
-**Slogan:** My files. My choice.
+**My files. My choice.**
 
-This is a development branch built from the renamed FilePickerReDirekt repository. The existing package name is retained to preserve upgrade identity.
+## Implemented
 
-## What is included
-- Rebranded UI and app label.
-- Standard ACTION_GET_CONTENT picker target, with a selected manager and system picker fallback.
-- The bridge remains alive for the file manager's result and forwards grantable content URIs.
-- An in-app readable-URI smoke test.
-- The previous unsafe picker-process LSPosed hook is disabled.
+- Optional, centrally scoped LSPosed hook for `com.google.android.documentsui` and `com.android.documentsui` processes.
+- `ACTION_GET_CONTENT` only. Original DocumentsUI remains alive.
+- Bridge launched using `startActivityForResult`; result handled via Android's Activity.dispatchActivityResult before DocumentsUI's own callback, with a distinct request code.
+- Valid `content://` URI results passed to original caller with read permissions.
+- On cancel / invalid result / exception: do not finish stock picker; user can continue normally.
+- Read-only settings ContentProvider permits DocumentsUI to check the global enable switch without private-file hacks.
+- In-app test explicitly targets DocumentsUI, distinct from the preferred manager bridge test.
 
-## What is not yet implemented
-- Automatic system-wide replacement of all Android pickers.
-- SAF OPEN_DOCUMENT, CREATE_DOCUMENT, OPEN_DOCUMENT_TREE and Photo Picker overrides.
-- Root access or permission escalation.
-- Instrumented tests for third-party calling applications.
-- Verified device support for Android 16/17.
+## Test it on your device
 
-## Release criteria
-Build successfully, test URI grant propagation in a separate calling app and verify a real file upload. Check cancel, single and multiple selection, mismatched MIME types, fallback behavior and at least one Android 16/17 device. Do not claim universal Android 17 compatibility.
+1. Install GitHub Actions debug APK as an update.
+2. Enable MyFilesMyChoice for the *DocumentsUI* package(s) in LSPosed, not each calling app; reboot.
+3. In MyFilesMyChoice > Settings, choose a preferred file manager and enable global interception.
+4. Tap Test SYSTEM-WIDE DocumentsUI hook, select a TXT/PDF and confirm PASS.
+5. Repeat and cancel your preferred manager. Original picker should be visible and remain usable.
+6. Test a real external app that invokes DocumentsUI GET_CONTENT, check it accepts and opens the file.
+7. Confirm OPEN_DOCUMENT test still uses the original Android picker.
+8. Disable the global switch and confirm stock behavior returns.
 
-## Safety
-A returned file:// URI must not be handed to a modern third-party app as an upload result. The app should not expose unrestricted root files or attempt unsafe picker-process interruption.
+## Known limitations
+
+The separate Android Photo Picker, OPEN_DOCUMENT, TREE, CREATE_DOCUMENT, and OEM picker UIs are not intercepted. The hook has not yet been validated on Android 16/17 hardware or real uploads. Capturing all of those workflows is a later milestone and may need more than DocumentsUI interception.
+
+## Recovery
+
+If the picker crashes, disable MyFilesMyChoice in LSPosed or turn its global toggle off, then restart the picker process/reboot. Reinstalling without clearing data retains preferred-manager preferences.
+
+## Remaining tests
+
+- Third-party caller result grants (single/multi-select).
+- Unexpected resultCode and requestCode collisions.
+- MIME mismatch, invalid URI, file manager cancellation.
+- Real-world browser upload uses GET_CONTENT vs Photo Picker.
+- Samsung and non-Google DocumentsUI variants.

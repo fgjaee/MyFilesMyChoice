@@ -2,7 +2,9 @@ package com.example.filemanagerredirect
 
 import android.app.Activity
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.content.pm.PackageManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -10,7 +12,6 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
-/** On-device smoke test verifies readability of returned content URIs. */
 class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
 
@@ -28,10 +29,10 @@ class MainActivity : AppCompatActivity() {
         }
         status.text = try {
             val first = contentResolver.openInputStream(uri)?.use { it.read() }
-            if (first == null) "FAIL: Cannot open selected URI: $uri"
-            else "PASS: Returned and readable ($uri)"
+            if (first == null) "FAIL: Cannot open selected URI: " + uri
+            else "PASS: Returned and readable (" + uri + ")"
         } catch (e: Exception) {
-            "FAIL: URI returned but unreadable: ${e.message}"
+            "FAIL: URI returned but unreadable: " + e.message
         }
     }
 
@@ -43,7 +44,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(p, p, p, p)
         }
         status = TextView(this).apply {
-            text = "Select a file; MyFilesMyChoice will verify the returned URI."
+            text = "Select a file and verify the returned URI."
             textSize = 14f
         }
         col.addView(TextView(this).apply {
@@ -57,7 +58,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
         col.addView(Button(this).apply {
-            text = "Test MyFilesMyChoice bridge"
+            text = "Test preferred manager bridge"
             setOnClickListener {
                 picker.launch(Intent(this@MainActivity, RedirectActivity::class.java).apply {
                     action = Intent.ACTION_GET_CONTENT
@@ -67,7 +68,11 @@ class MainActivity : AppCompatActivity() {
             }
         })
         col.addView(Button(this).apply {
-            text = "Test Android system picker"
+            text = "Test SYSTEM-WIDE DocumentsUI hook"
+            setOnClickListener { testDocumentsUi() }
+        })
+        col.addView(Button(this).apply {
+            text = "Test Android OPEN_DOCUMENT (not hooked)"
             setOnClickListener {
                 picker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     type = "*/*"
@@ -77,5 +82,30 @@ class MainActivity : AppCompatActivity() {
         })
         col.addView(status)
         setContentView(ScrollView(this).apply { addView(col) })
+    }
+
+    private fun testDocumentsUi() {
+        for (pkg in listOf("com.google.android.documentsui", "com.android.documentsui")) {
+            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "*/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+                setPackage(pkg)
+            }
+            val available = try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    packageManager.resolveActivity(
+                        intent, PackageManager.ResolveInfoFlags.of(0L)) != null
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.resolveActivity(intent, 0) != null
+                }
+            } catch (_: Exception) { false }
+            if (available) {
+                status.text = "Launched " + pkg + "; awaiting result"
+                picker.launch(intent)
+                return
+            }
+        }
+        status.text = "DocumentsUI GET_CONTENT activity not found on this device"
     }
 }

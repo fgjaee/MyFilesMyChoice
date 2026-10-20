@@ -1,120 +1,42 @@
 package com.example.filemanagerredirect
 
 import android.content.Context
-import android.content.pm.PackageInfo
+import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.pm.VersionedPackage
 import android.os.Build
-import android.util.Log
 
-/**
- * Decides which file manager package should be used.
- * - Reads user prefs (enabled flag, primary choice).
- * - If set to "auto", picks the best installed manager from our known list.
- *
- * NOTE: This class does NOT perform any Xposed hooking. The hook lives in xposedentry.kt.
- */
+/** Resolves the preferred installed manager for GET_CONTENT requests. */
 object FileManagerRedirectHook {
-
-    private const val TAG = "FMRedirectHook"
-    private const val FALLBACK_SYSTEM = "com.android.documentsui"
-
-    /**
-     * Returns the package name of the chosen file manager, or null if redirect is disabled.
-     */
     fun resolveTargetPackage(ctx: Context): String? {
-        val sp = try {
-            val de = ctx.createDeviceProtectedStorageContext()
-            de.getSharedPreferences(Prefs.PREFS_NAME, Context.MODE_PRIVATE)
-        } catch (_: Throwable) {
-            ctx.getSharedPreferences(Prefs.PREFS_NAME, Context.MODE_PRIVATE)
-        }
-
-        val enabled = sp.getBoolean(Prefs.KEY_ENABLED, true)
-        if (!enabled) {
-            Log.d(TAG, "Redirect is disabled in prefs")
-            return null
-        }
-
-        // Normalize empty ("") from old builds to "auto"
-        val selectedRaw = sp.getString(Prefs.KEY_PRIMARY_MANAGER, Prefs.PKG_AUTO)
-        val selected = Prefs.normalizeSelected(selectedRaw)
-
-        if (selected != Prefs.PKG_AUTO) {
-            Log.d(TAG, "Using user-selected manager: $selected")
-            return selected
-        }
-
-        // Auto mode: load the known manager list from resources and filter to those installed.
-        val known = try {
-            ctx.resources.getStringArray(R.array.known_file_manager_packages).toList()
-        } catch (_: Throwable) {
-            emptyList()
-        }
-
-        val installed = filterInstalled(ctx.packageManager, known)
-        val best = chooseBest(installed) ?: FALLBACK_SYSTEM
-        Log.d(TAG, "Auto-selected manager: $best (installed=${installed.size})")
-        return best
-    }
-
-    /**
-     * Returns installed packages from the given list.
-     */
-    private fun filterInstalled(pm: PackageManager, candidates: List<String>): List<String> {
-        if (candidates.isEmpty()) return emptyList()
-        return candidates.filter { pkg ->
-            pm.getPackageInfoCompat(pkg) != null
-        }
-    }
-
-    /**
-     * Pick a "best" package from installed ones using a priority list, else first available.
-     */
-    private fun chooseBest(installed: List<String>): String? {
-        if (installed.isEmpty()) return null
+        val prefs = ctx.getSharedPreferences(Prefs.PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(Prefs.KEY_ENABLED, true)) return null
+        val selected = Prefs.normalizeSelected(
+            prefs.getString(Prefs.KEY_PRIMARY_MANAGER, Prefs.PKG_AUTO))
+        if (selected != Prefs.PKG_AUTO) return selected
 
         val priority = listOf(
-            // Power-user / root-capable
-            "com.mixplorer",
-            "com.mixplorer.silver",
-            "bin.mt.plus",
-            "bin.mt.plus.canary",
-            "pl.solidexplorer2",
-            "nextapp.fx",
-            "com.speedsoftware.rootexplorer",
-            "com.lonelycatgames.Xplore",
-            // Stock / Google
-            "com.google.android.apps.nbu.files",
-            "com.android.documentsui",
+            "com.mixplorer", "com.mixplorer.silver", "bin.mt.plus", "bin.mt.plus.canary",
+            "pl.solidexplorer2", "nextapp.fx", "com.lonelycatgames.Xplore",
+            "com.ghisler.android.TotalCommander", "me.zhanghai.android.files"
         )
-
-        priority.firstOrNull { it in installed }?.let { return it }
-        return installed.firstOrNull()
+        val known = ctx.resources.getStringArray(R.array.known_file_manager_packages)
+        return (priority + known).distinct()
+            .firstOrNull { supportsGetContent(ctx.packageManager, it) }
     }
-}
 
-/* ------------------------------ Compat helpers ------------------------------ */
-
-/**
- * Safe wrapper for getPackageInfo across API levels.
- * Returns null if the package isn't found or any error occurs.
- */
-private fun PackageManager.getPackageInfoCompat(
-    packageName: String,
-    flags: Int = 0
-): PackageInfo? {
-    return try {
-        if (Build.VERSION.SDK_INT >= 33) {
-            getPackageInfo(
-                VersionedPackage(packageName, 0),
-                PackageManager.PackageInfoFlags.of(flags.toLong())
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            getPackageInfo(packageName, flags)
+    private fun supportsGetContent(pm: PackageManager, pkg: String): Boolean {
+        val req = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "*/*"
+            addCategory(Intent.CATEGORY_OPENABLE)
+            setPackage(pkg)
         }
-    } catch (_: Throwable) {
-        null
+        return try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                pm.resolveActivity(req, PackageManager.ResolveInfoFlags.of(0)) != null
+            } else {
+                @Suppress("DEPRECATION")
+                pm.resolveActivity(req, 0) != null
+            }
+        } catch (_: Exception) { false }
     }
 }

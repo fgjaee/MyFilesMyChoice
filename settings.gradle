@@ -14,5 +14,5 @@ dependencyResolutionManagement {
         maven { url 'https://api.xposed.info/' }
     }
 }
-rootProject.name = "FileManagerRedirect"
+rootProject.name = "MyFilesMyChoice"
 include(":app")

@@ -1,75 +1,81 @@
 package com.example.filemanagerredirect
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
-import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
+/** On-device smoke test verifies readability of returned content URIs. */
 class MainActivity : AppCompatActivity() {
+    private lateinit var status: TextView
 
-    private val tag = "MainActivity"
+    private val picker = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            status.text = "Selection canceled or unavailable"
+            return@registerForActivityResult
+        }
+        val uri = result.data?.data ?: result.data?.clipData?.getItemAt(0)?.uri
+        if (uri == null) {
+            status.text = "FAIL: No URI returned"
+            return@registerForActivityResult
+        }
+        status.text = try {
+            val first = contentResolver.openInputStream(uri)?.use { it.read() }
+            if (first == null) "FAIL: Cannot open selected URI: $uri"
+            else "PASS: Returned and readable ($uri)"
+        } catch (e: Exception) {
+            "FAIL: URI returned but unreadable: ${e.message}"
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Ultra-safe UI: no XML, no Material components. This avoids theme/layout crashes.
-        val root = ScrollView(this)
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 48, 48, 48)
-            gravity = Gravity.CENTER_HORIZONTAL
+            val p = (24 * resources.displayMetrics.density).toInt()
+            setPadding(p, p, p, p)
         }
-        root.addView(col)
-
-        val title = TextView(this).apply {
-            text = getString(R.string.app_name)
+        status = TextView(this).apply {
+            text = "Select a file; MyFilesMyChoice will verify the returned URI."
+            textSize = 14f
+        }
+        col.addView(TextView(this).apply {
+            text = "MyFilesMyChoice\nMy files. My choice."
             textSize = 22f
-        }
-        val btnSettings = Button(this).apply {
-            text = getString(R.string.title_activity_settings)
-            setOnClickListener { openSettingsSafe() }
-        }
-        val btnTest = Button(this).apply {
-            text = getString(R.string.btn_test)
-            setOnClickListener { testRedirectSafe() }
-        }
-
-        col.addView(title)
-        col.addView(space(24))
-        col.addView(btnSettings)
-        col.addView(space(12))
-        col.addView(btnTest)
-
-        setContentView(root)
-    }
-
-    private fun space(dp: Int) = TextView(this).apply {
-        // simple spacer
-        height = (dp * resources.displayMetrics.density).toInt()
-    }
-
-    private fun openSettingsSafe() {
-        try {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        } catch (t: Throwable) {
-            Log.e(tag, "Failed to open SettingsActivity", t)
-            Toast.makeText(this, "Couldn’t open Settings", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun testRedirectSafe() {
-        try {
-            // Kick the RedirectActivity in a safe way; it will show chooser/system if needed.
-            startActivity(Intent(this, RedirectActivity::class.java))
-        } catch (t: Throwable) {
-            Log.e(tag, "Failed to start RedirectActivity", t)
-            Toast.makeText(this, "Couldn’t start redirect", Toast.LENGTH_LONG).show()
-        }
+        })
+        col.addView(Button(this).apply {
+            text = "Settings"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+            }
+        })
+        col.addView(Button(this).apply {
+            text = "Test MyFilesMyChoice bridge"
+            setOnClickListener {
+                picker.launch(Intent(this@MainActivity, RedirectActivity::class.java).apply {
+                    action = Intent.ACTION_GET_CONTENT
+                    type = "*/*"
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                })
+            }
+        })
+        col.addView(Button(this).apply {
+            text = "Test Android system picker"
+            setOnClickListener {
+                picker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    type = "*/*"
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                })
+            }
+        })
+        col.addView(status)
+        setContentView(ScrollView(this).apply { addView(col) })
     }
 }

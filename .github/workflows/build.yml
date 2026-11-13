@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -47,3 +50,22 @@ jobs:
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish direct signed APK download
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -s 'app/build/outputs/apk/debug/app-debug.apk'
+          cp 'app/build/outputs/apk/debug/app-debug.apk' 'MyFilesMyChoice.apk'
+          tag=latest-apk
+          printf 'Latest APK and module assets from build #%s (%s)\n' "$GITHUB_RUN_NUMBER" "$GITHUB_SHA" > direct-release-notes.txt
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" 'MyFilesMyChoice.apk' --clobber
+            gh release edit "$tag" --title 'Latest Android APK' --notes-file direct-release-notes.txt
+          else
+            gh release create "$tag" 'MyFilesMyChoice.apk' --target "$GITHUB_SHA" --title 'Latest Android APK' --notes-file direct-release-notes.txt --prerelease
+          fi
+          echo "Direct APK: https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/MyFilesMyChoice.apk" >> "$GITHUB_STEP_SUMMARY"
